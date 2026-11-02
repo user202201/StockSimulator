@@ -23,229 +23,1147 @@
  },
  "trades": [
   {
+   "id": 0,
    "time": "2026-06-29T20:00:00Z",
    "side": "BUY",
    "symbol": "GOOGL",
    "shares": 2.123,
    "price": 588.79,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +48.9%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +48.9%",
+   "detail": {
+    "amount": 1250.0,
+    "cash_before": 5000.0,
+    "cash_after": 3750.0,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $588.50 > 50\u65e5\u5747\u7ebf $495.28",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $566.31 > 50\u65e5\u5747\u7ebf $495.28\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +16.9%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 67\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $247.57 > 200\u65e5\u5747\u7ebf $246.12\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08+48.9%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 4",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 588.4951,
+     "sma20": 566.3105,
+     "sma50": 495.2798,
+     "rsi": 66.6059,
+     "mom20": 0.1692,
+     "mom60": 0.4886
+    },
+    "equity": 5000.0,
+    "weight": 0.25
+   }
   },
   {
+   "id": 1,
    "time": "2026-06-29T20:00:00Z",
    "side": "BUY",
    "symbol": "QQQ",
    "shares": 5.7622,
    "price": 216.9,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +16.4%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +16.4%",
+   "detail": {
+    "amount": 1249.82,
+    "cash_before": 3750.0,
+    "cash_after": 2500.18,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $216.79 > 50\u65e5\u5747\u7ebf $201.67",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $209.08 > 50\u65e5\u5747\u7ebf $201.67\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +4.1%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 65\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $247.57 > 200\u65e5\u5747\u7ebf $246.12\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 2 \u4f4d\uff08+16.4%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 3",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 216.7919,
+     "sma20": 209.0819,
+     "sma50": 201.6686,
+     "rsi": 64.9145,
+     "mom20": 0.0409,
+     "mom60": 0.1639
+    },
+    "equity": 4999.38,
+    "weight": 0.25
+   }
   },
   {
+   "id": 2,
    "time": "2026-06-29T20:00:00Z",
    "side": "BUY",
    "symbol": "AVGO",
    "shares": 18.1847,
    "price": 68.72,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +6.9%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +6.9%",
+   "detail": {
+    "amount": 1249.68,
+    "cash_before": 2500.18,
+    "cash_after": 1250.49,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $68.69 > 50\u65e5\u5747\u7ebf $64.08",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $66.96 > 50\u65e5\u5747\u7ebf $64.08\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +6.9%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 67\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $247.57 > 200\u65e5\u5747\u7ebf $246.12\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 3 \u4f4d\uff08+6.9%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 2",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 68.6874,
+     "sma20": 66.965,
+     "sma50": 64.0813,
+     "rsi": 67.2485,
+     "mom20": 0.069,
+     "mom60": 0.0693
+    },
+    "equity": 4998.75,
+    "weight": 0.25
+   }
   },
   {
+   "id": 3,
    "time": "2026-06-29T20:00:00Z",
    "side": "BUY",
    "symbol": "TSLA",
    "shares": 7.2617,
    "price": 172.07,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +5.8%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +5.8%",
+   "detail": {
+    "amount": 1249.52,
+    "cash_before": 1250.49,
+    "cash_after": 0.98,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $171.98 > 50\u65e5\u5747\u7ebf $163.84",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $170.38 > 50\u65e5\u5747\u7ebf $163.84\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +2.3%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 45\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $247.57 > 200\u65e5\u5747\u7ebf $246.12\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 4 \u4f4d\uff08+5.8%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 171.9833,
+     "sma20": 170.3757,
+     "sma50": 163.8393,
+     "rsi": 45.2223,
+     "mom20": 0.0228,
+     "mom60": 0.058
+    },
+    "equity": 4998.13,
+    "weight": 0.25
+   }
   },
   {
+   "id": 4,
    "time": "2026-07-07T20:00:00Z",
    "side": "SELL",
    "symbol": "TSLA",
    "shares": 7.2617,
    "price": 165.48,
    "pnl": -47.84,
-   "reason": "trend broken (< SMA50)"
+   "reason": "\u8dcc\u783450\u65e5\u5747\u7ebf",
+   "detail": {
+    "avg_cost": 172.07,
+    "peak": 172.07,
+    "entry": "2026-06-29T20:00:00Z",
+    "held_days": 8,
+    "ret": -0.0383,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $165.56 > \u786c\u6b62\u635f\u7ebf $160.02\uff08\u6210\u672c $172.07 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $165.56 > \u56de\u64a4\u7ebf $158.30\uff08\u6301\u4ed3\u6700\u9ad8 $172.07 \u7684 -8%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $165.56 < 50\u65e5\u5747\u7ebf $166.02",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 165.5644,
+     "sma20": 169.4327,
+     "sma50": 166.021,
+     "rsi": 39.7552,
+     "mom20": -0.0484,
+     "mom60": 0.0897
+    }
+   }
   },
   {
+   "id": 5,
    "time": "2026-07-07T20:00:00Z",
    "side": "BUY",
    "symbol": "SPY",
    "shares": 4.7441,
    "price": 253.5,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +13.6%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +13.6%",
+   "detail": {
+    "amount": 1202.64,
+    "cash_before": 1202.65,
+    "cash_after": 0.01,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $253.38 > 50\u65e5\u5747\u7ebf $237.50",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $244.96 > 50\u65e5\u5747\u7ebf $237.50\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +7.2%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 72\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $253.38 > 200\u65e5\u5747\u7ebf $246.95\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08+13.6%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 253.3762,
+     "sma20": 244.9573,
+     "sma50": 237.4967,
+     "rsi": 72.2231,
+     "mom20": 0.0724,
+     "mom60": 0.1358
+    },
+    "equity": 4863.8,
+    "weight": 0.247
+   }
   },
   {
+   "id": 6,
    "time": "2026-08-17T20:00:00Z",
    "side": "SELL",
    "symbol": "GOOGL",
    "shares": 2.123,
    "price": 567.02,
    "pnl": -46.21,
-   "reason": "trend broken (< SMA50)"
+   "reason": "\u8dcc\u783450\u65e5\u5747\u7ebf",
+   "detail": {
+    "avg_cost": 588.79,
+    "peak": 612.16,
+    "entry": "2026-06-29T20:00:00Z",
+    "held_days": 49,
+    "ret": -0.037,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $567.31 > \u786c\u6b62\u635f\u7ebf $547.57\uff08\u6210\u672c $588.79 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $567.31 > \u56de\u64a4\u7ebf $563.19\uff08\u6301\u4ed3\u6700\u9ad8 $612.16 \u7684 -8%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $567.31 < 50\u65e5\u5747\u7ebf $581.33",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 567.3086,
+     "sma20": 591.5841,
+     "sma50": 581.3265,
+     "rsi": 44.923,
+     "mom20": -0.0072,
+     "mom60": 0.1919
+    }
+   }
   },
   {
+   "id": 7,
    "time": "2026-08-17T20:00:00Z",
    "side": "SELL",
    "symbol": "AVGO",
    "shares": 18.1847,
    "price": 70.39,
    "pnl": 30.29,
-   "reason": "trailing stop -8%"
+   "reason": "\u56de\u64a4\u6b62\u76c8 -8%",
+   "detail": {
+    "avg_cost": 68.72,
+    "peak": 76.83,
+    "entry": "2026-06-29T20:00:00Z",
+    "held_days": 49,
+    "ret": 0.0242,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $70.42 > \u786c\u6b62\u635f\u7ebf $63.91\uff08\u6210\u672c $68.72 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $70.42 \u2264 \u56de\u64a4\u7ebf $70.68\uff08\u6301\u4ed3\u6700\u9ad8 $76.83 \u7684 -8%\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u73b0\u4ef7 $70.42 < 50\u65e5\u5747\u7ebf $70.52",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 70.4227,
+     "sma20": 73.6384,
+     "sma50": 70.5223,
+     "rsi": 43.3661,
+     "mom20": -0.0129,
+     "mom60": 0.1032
+    }
+   }
   },
   {
+   "id": 8,
    "time": "2026-08-17T20:00:00Z",
    "side": "BUY",
    "symbol": "AMZN",
    "shares": 4.0455,
    "price": 323.25,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +32.9%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +32.9%",
+   "detail": {
+    "amount": 1307.71,
+    "cash_before": 2483.78,
+    "cash_after": 1176.07,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $323.09 > 50\u65e5\u5747\u7ebf $286.48",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $303.40 > 50\u65e5\u5747\u7ebf $286.48\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +8.8%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 66\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $279.76 > 200\u65e5\u5747\u7ebf $248.98\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08+32.9%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 2",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 323.0883,
+     "sma20": 303.3959,
+     "sma50": 286.4768,
+     "rsi": 66.0108,
+     "mom20": 0.0876,
+     "mom60": 0.3294
+    },
+    "equity": 5230.93,
+    "weight": 0.25
+   }
   },
   {
+   "id": 9,
    "time": "2026-08-17T20:00:00Z",
    "side": "BUY",
    "symbol": "MSFT",
    "shares": 22.0398,
    "price": 53.36,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +16.8%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +16.8%",
+   "detail": {
+    "amount": 1176.07,
+    "cash_before": 1176.07,
+    "cash_after": 0.0,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $53.33 > 50\u65e5\u5747\u7ebf $49.70",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $51.06 > 50\u65e5\u5747\u7ebf $49.70\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +7.6%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 65\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $279.76 > 200\u65e5\u5747\u7ebf $248.98\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 2 \u4f4d\uff08+16.8%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 53.3346,
+     "sma20": 51.0564,
+     "sma50": 49.7032,
+     "rsi": 65.3579,
+     "mom20": 0.0756,
+     "mom60": 0.1677
+    },
+    "equity": 5230.28,
+    "weight": 0.225
+   }
   },
   {
+   "id": 10,
    "time": "2026-09-04T20:00:00Z",
    "side": "SELL",
    "symbol": "AMZN",
    "shares": 4.0455,
    "price": 300.86,
    "pnl": -90.58,
-   "reason": "trend broken (< SMA50)"
+   "reason": "\u8dcc\u783450\u65e5\u5747\u7ebf",
+   "detail": {
+    "avg_cost": 323.25,
+    "peak": 323.25,
+    "entry": "2026-08-17T20:00:00Z",
+    "held_days": 18,
+    "ret": -0.0693,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $301.01 > \u786c\u6b62\u635f\u7ebf $300.62\uff08\u6210\u672c $323.25 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $301.01 > \u56de\u64a4\u7ebf $297.39\uff08\u6301\u4ed3\u6700\u9ad8 $323.25 \u7684 -8%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $301.01 < 50\u65e5\u5747\u7ebf $303.35",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 301.0105,
+     "sma20": 315.6865,
+     "sma50": 303.3451,
+     "rsi": 38.8471,
+     "mom20": -0.0319,
+     "mom60": 0.2223
+    }
+   }
   },
   {
+   "id": 11,
    "time": "2026-09-04T20:00:00Z",
    "side": "BUY",
    "symbol": "META",
    "shares": 10.0493,
    "price": 121.11,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +36.4%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +36.4%",
+   "detail": {
+    "amount": 1217.12,
+    "cash_before": 1217.13,
+    "cash_after": 0.01,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $121.05 > 50\u65e5\u5747\u7ebf $102.08",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $113.55 > 50\u65e5\u5747\u7ebf $102.08\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +15.4%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 70\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $295.13 > 200\u65e5\u5747\u7ebf $251.18\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08+36.4%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 121.0543,
+     "sma20": 113.5452,
+     "sma50": 102.0783,
+     "rsi": 70.1882,
+     "mom20": 0.1543,
+     "mom60": 0.3642
+    },
+    "equity": 5307.68,
+    "weight": 0.229
+   }
   },
   {
+   "id": 12,
    "time": "2026-09-17T20:00:00Z",
    "side": "SELL",
    "symbol": "META",
    "shares": 10.0493,
    "price": 118.43,
    "pnl": -27.0,
-   "reason": "trailing stop -8%"
+   "reason": "\u56de\u64a4\u6b62\u76c8 -8%",
+   "detail": {
+    "avg_cost": 121.11,
+    "peak": 128.94,
+    "entry": "2026-09-04T20:00:00Z",
+    "held_days": 13,
+    "ret": -0.0222,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $118.49 > \u786c\u6b62\u635f\u7ebf $112.64\uff08\u6210\u672c $121.11 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $118.49 \u2264 \u56de\u64a4\u7ebf $118.62\uff08\u6301\u4ed3\u6700\u9ad8 $128.94 \u7684 -8%\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u73b0\u4ef7 $118.49 \u2265 50\u65e5\u5747\u7ebf $108.29",
+      "ok": false
+     }
+    ],
+    "ind": {
+     "price": 118.4875,
+     "sma20": 119.6371,
+     "sma50": 108.2852,
+     "rsi": 54.833,
+     "mom20": 0.094,
+     "mom60": 0.3791
+    }
+   }
   },
   {
+   "id": 13,
    "time": "2026-09-17T20:00:00Z",
    "side": "BUY",
    "symbol": "AVGO",
    "shares": 14.6667,
    "price": 81.14,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +20.7%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +20.7%",
+   "detail": {
+    "amount": 1190.13,
+    "cash_before": 1190.13,
+    "cash_after": 0.01,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $81.10 > 50\u65e5\u5747\u7ebf $74.24",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $76.51 > 50\u65e5\u5747\u7ebf $74.24\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +16.4%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 73\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $292.06 > 200\u65e5\u5747\u7ebf $252.85\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08+20.7%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 81.1043,
+     "sma20": 76.5094,
+     "sma50": 74.2366,
+     "rsi": 73.4041,
+     "mom20": 0.1641,
+     "mom60": 0.2067
+    },
+    "equity": 5386.48,
+    "weight": 0.221
+   }
   },
   {
+   "id": 14,
    "time": "2026-09-24T20:00:00Z",
    "side": "SELL",
    "symbol": "MSFT",
    "shares": 22.0398,
    "price": 54.9,
    "pnl": 33.99,
-   "reason": "trailing stop -8%"
+   "reason": "\u56de\u64a4\u6b62\u76c8 -8%",
+   "detail": {
+    "avg_cost": 53.36,
+    "peak": 60.41,
+    "entry": "2026-08-17T20:00:00Z",
+    "held_days": 38,
+    "ret": 0.0289,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $54.93 > \u786c\u6b62\u635f\u7ebf $49.63\uff08\u6210\u672c $53.36 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $54.93 \u2264 \u56de\u64a4\u7ebf $55.58\uff08\u6301\u4ed3\u6700\u9ad8 $60.41 \u7684 -8%\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u73b0\u4ef7 $54.93 \u2265 50\u65e5\u5747\u7ebf $54.37",
+      "ok": false
+     }
+    ],
+    "ind": {
+     "price": 54.9309,
+     "sma20": 57.5063,
+     "sma50": 54.3713,
+     "rsi": 40.3852,
+     "mom20": 0.0174,
+     "mom60": 0.0319
+    }
+   }
   },
   {
+   "id": 15,
    "time": "2026-09-24T20:00:00Z",
    "side": "BUY",
    "symbol": "META",
    "shares": 9.2626,
    "price": 130.64,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +52.7%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +52.7%",
+   "detail": {
+    "amount": 1210.06,
+    "cash_before": 1210.07,
+    "cash_after": 0.01,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $130.57 > 50\u65e5\u5747\u7ebf $111.25",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $122.48 > 50\u65e5\u5747\u7ebf $111.25\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +13.7%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 61\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $288.93 > 200\u65e5\u5747\u7ebf $253.42\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08+52.7%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 130.5738,
+     "sma20": 122.4786,
+     "sma50": 111.2472,
+     "rsi": 60.92,
+     "mom20": 0.1367,
+     "mom60": 0.5267
+    },
+    "equity": 5445.19,
+    "weight": 0.222
+   }
   },
   {
+   "id": 16,
    "time": "2026-10-07T20:00:00Z",
    "side": "SELL",
    "symbol": "SPY",
    "shares": 4.7441,
    "price": 284.3,
    "pnl": 146.09,
-   "reason": "trend broken (< SMA50)"
+   "reason": "\u8dcc\u783450\u65e5\u5747\u7ebf",
+   "detail": {
+    "avg_cost": 253.5,
+    "peak": 299.05,
+    "entry": "2026-07-07T20:00:00Z",
+    "held_days": 92,
+    "ret": 0.1215,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $284.44 > \u786c\u6b62\u635f\u7ebf $235.76\uff08\u6210\u672c $253.50 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $284.44 > \u56de\u64a4\u7ebf $275.13\uff08\u6301\u4ed3\u6700\u9ad8 $299.05 \u7684 -8%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $284.44 < 50\u65e5\u5747\u7ebf $286.38",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 284.4396,
+     "sma20": 289.893,
+     "sma50": 286.3805,
+     "rsi": 35.9614,
+     "mom20": -0.0393,
+     "mom60": 0.102
+    }
+   }
   },
   {
+   "id": 17,
    "time": "2026-10-07T20:00:00Z",
    "side": "SELL",
    "symbol": "META",
    "shares": 9.2626,
    "price": 119.15,
    "pnl": -106.37,
-   "reason": "hard stop -7%"
+   "reason": "\u786c\u6b62\u635f -7%",
+   "detail": {
+    "avg_cost": 130.64,
+    "peak": 131.27,
+    "entry": "2026-09-24T20:00:00Z",
+    "held_days": 13,
+    "ret": -0.0879,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $119.21 \u2264 \u786c\u6b62\u635f\u7ebf $121.49\uff08\u6210\u672c $130.64 \u7684 -7%\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u73b0\u4ef7 $119.21 \u2264 \u56de\u64a4\u7ebf $120.76\uff08\u6301\u4ed3\u6700\u9ad8 $131.27 \u7684 -8%\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u73b0\u4ef7 $119.21 \u2265 50\u65e5\u5747\u7ebf $117.31",
+      "ok": false
+     }
+    ],
+    "ind": {
+     "price": 119.2144,
+     "sma20": 125.6103,
+     "sma50": 117.3086,
+     "rsi": 51.3461,
+     "mom20": -0.0148,
+     "mom60": 0.2405
+    }
+   }
   },
   {
+   "id": 18,
    "time": "2026-10-07T20:00:00Z",
    "side": "BUY",
    "symbol": "GOOGL",
    "shares": 1.7433,
    "price": 742.08,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +30.6%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +30.6%",
+   "detail": {
+    "amount": 1293.68,
+    "cash_before": 2452.43,
+    "cash_after": 1158.75,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $741.71 > 50\u65e5\u5747\u7ebf $633.37",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $690.20 > 50\u65e5\u5747\u7ebf $633.37\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +18.8%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 67\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $284.44 > 200\u65e5\u5747\u7ebf $255.06\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08+30.6%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 2",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 741.7136,
+     "sma20": 690.1997,
+     "sma50": 633.3662,
+     "rsi": 67.2208,
+     "mom20": 0.1877,
+     "mom60": 0.3063
+    },
+    "equity": 5174.76,
+    "weight": 0.25
+   }
   },
   {
+   "id": 19,
    "time": "2026-10-07T20:00:00Z",
    "side": "BUY",
    "symbol": "AAPL",
    "shares": 2.4328,
    "price": 476.3,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +12.0%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +12.0%",
+   "detail": {
+    "amount": 1158.74,
+    "cash_before": 1158.75,
+    "cash_after": 0.01,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $476.06 > 50\u65e5\u5747\u7ebf $459.58",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $473.84 > 50\u65e5\u5747\u7ebf $459.58\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +8.4%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 55\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $284.44 > 200\u65e5\u5747\u7ebf $255.06\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 2 \u4f4d\uff08+12.0%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 476.0606,
+     "sma20": 473.8356,
+     "sma50": 459.578,
+     "rsi": 54.7192,
+     "mom20": 0.0845,
+     "mom60": 0.1202
+    },
+    "equity": 5174.12,
+    "weight": 0.224
+   }
   },
   {
+   "id": 20,
    "time": "2026-10-09T20:00:00Z",
    "side": "SELL",
    "symbol": "QQQ",
    "shares": 5.7622,
    "price": 252.42,
    "pnl": 204.68,
-   "reason": "trend broken (< SMA50)"
+   "reason": "\u8dcc\u783450\u65e5\u5747\u7ebf",
+   "detail": {
+    "avg_cost": 216.9,
+    "peak": 274.22,
+    "entry": "2026-06-29T20:00:00Z",
+    "held_days": 102,
+    "ret": 0.1638,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $252.55 > \u786c\u6b62\u635f\u7ebf $201.72\uff08\u6210\u672c $216.90 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $252.55 > \u56de\u64a4\u7ebf $252.28\uff08\u6301\u4ed3\u6700\u9ad8 $274.22 \u7684 -8%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $252.55 < 50\u65e5\u5747\u7ebf $252.98",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 252.5474,
+     "sma20": 264.1684,
+     "sma50": 252.9768,
+     "rsi": 34.6876,
+     "mom20": -0.0186,
+     "mom60": 0.1755
+    }
+   }
   },
   {
+   "id": 21,
    "time": "2026-10-14T20:00:00Z",
    "side": "BUY",
    "symbol": "META",
    "shares": 10.4663,
    "price": 123.28,
    "pnl": null,
-   "reason": "uptrend, 60d momentum +35.9%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf +35.9%",
+   "detail": {
+    "amount": 1290.25,
+    "cash_before": 1454.51,
+    "cash_after": 164.26,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $123.21 > 50\u65e5\u5747\u7ebf $119.31",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $124.40 > 50\u65e5\u5747\u7ebf $119.31\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +2.5%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 33\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $284.20 > 200\u65e5\u5747\u7ebf $256.12\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08+35.9%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 123.2149,
+     "sma20": 124.3989,
+     "sma50": 119.306,
+     "rsi": 32.5113,
+     "mom20": 0.0246,
+     "mom60": 0.3593
+    },
+    "equity": 5161.02,
+    "weight": 0.25
+   }
   },
   {
+   "id": 22,
    "time": "2026-10-19T20:00:00Z",
    "side": "SELL",
    "symbol": "META",
    "shares": 10.4663,
    "price": 117.12,
    "pnl": -64.4,
-   "reason": "trend broken (< SMA50)"
+   "reason": "\u8dcc\u783450\u65e5\u5747\u7ebf",
+   "detail": {
+    "avg_cost": 123.28,
+    "peak": 123.28,
+    "entry": "2026-10-14T20:00:00Z",
+    "held_days": 5,
+    "ret": -0.0499,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $117.18 > \u786c\u6b62\u635f\u7ebf $114.65\uff08\u6210\u672c $123.28 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $117.18 > \u56de\u64a4\u7ebf $113.41\uff08\u6301\u4ed3\u6700\u9ad8 $123.28 \u7684 -8%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $117.18 < 50\u65e5\u5747\u7ebf $120.09",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 117.1818,
+     "sma20": 124.3344,
+     "sma50": 120.0891,
+     "rsi": 25.9208,
+     "mom20": -0.0553,
+     "mom60": 0.2225
+    }
+   }
   },
   {
+   "id": 23,
    "time": "2026-10-19T20:00:00Z",
    "side": "BUY",
    "symbol": "TSLA",
    "shares": 7.7262,
    "price": 164.48,
    "pnl": null,
-   "reason": "uptrend, 60d momentum -1.9%"
+   "reason": "\u4e0a\u5347\u8d8b\u52bf\uff0c60\u65e5\u52a8\u91cf -1.9%",
+   "detail": {
+    "amount": 1270.83,
+    "cash_before": 1390.11,
+    "cash_after": 119.29,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $164.40 > 50\u65e5\u5747\u7ebf $157.66",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u5747\u7ebf $159.49 > 50\u65e5\u5747\u7ebf $157.66\uff08\u77ed\u671f\u5f3a\u4e8e\u4e2d\u671f\uff09",
+      "ok": true
+     },
+     {
+      "text": "20\u65e5\u52a8\u91cf +6.9%\uff08\u9700\u4e3a\u6b63\uff09",
+      "ok": true
+     },
+     {
+      "text": "RSI 64\uff08\u9700 < 75\uff0c\u907f\u514d\u8ffd\u9ad8\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5927\u76d8 SPY $292.53 > 200\u65e5\u5747\u7ebf $256.80\uff08\u725b\u5e02\u8fc7\u6ee4\uff09",
+      "ok": true
+     },
+     {
+      "text": "\u5019\u9009\u4e2d 60\u65e5\u52a8\u91cf\u6392\u7b2c 1 \u4f4d\uff08-1.9%\uff09\uff0c\u5269\u4f59\u4ed3\u4f4d\u540d\u989d 1",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 164.4004,
+     "sma20": 159.4947,
+     "sma50": 157.6584,
+     "rsi": 64.2738,
+     "mom20": 0.0692,
+     "mom60": -0.0193
+    },
+    "equity": 5083.32,
+    "weight": 0.25
+   }
   },
   {
+   "id": 24,
    "time": "2026-10-22T20:00:00Z",
    "side": "SELL",
    "symbol": "AAPL",
    "shares": 2.4328,
    "price": 466.73,
    "pnl": -23.27,
-   "reason": "trend broken (< SMA50)"
+   "reason": "\u8dcc\u783450\u65e5\u5747\u7ebf",
+   "detail": {
+    "avg_cost": 476.3,
+    "peak": 488.79,
+    "entry": "2026-10-07T20:00:00Z",
+    "held_days": 15,
+    "ret": -0.0201,
+    "checks": [
+     {
+      "text": "\u73b0\u4ef7 $466.97 > \u786c\u6b62\u635f\u7ebf $442.96\uff08\u6210\u672c $476.30 \u7684 -7%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $466.97 > \u56de\u64a4\u7ebf $449.69\uff08\u6301\u4ed3\u6700\u9ad8 $488.79 \u7684 -8%\uff09",
+      "ok": false
+     },
+     {
+      "text": "\u73b0\u4ef7 $466.97 < 50\u65e5\u5747\u7ebf $468.11",
+      "ok": true
+     }
+    ],
+    "ind": {
+     "price": 466.9667,
+     "sma20": 478.8451,
+     "sma50": 468.1062,
+     "rsi": 41.726,
+     "mom20": -0.0268,
+     "mom60": 0.0646
+    }
+   }
   }
  ],
  "equity": [

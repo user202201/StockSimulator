@@ -56,16 +56,36 @@ def entry_score(c):
         return mom60
     return None
 
-def exit_reason(pos, c):
+def snap(c):
+    f = lambda x: None if x is None else round(x, 4)
+    return {"price": f(c[-1]), "sma20": f(sma(c, 20)), "sma50": f(sma(c, 50)), "rsi": f(rsi(c)),
+            "mom20": f(c[-1] / c[-21] - 1) if len(c) > 20 else None,
+            "mom60": f(c[-1] / c[-61] - 1) if len(c) > 60 else None}
+
+def exit_check(pos, c):
+    """Returns (reason or None, checks). Also updates the position's peak."""
     p = c[-1]
     pos["peak"] = max(pos["peak"], p)
-    if p <= pos["avg_cost"] * (1 - HARD_STOP):
-        return "hard stop -7%"
-    if p <= pos["peak"] * (1 - TRAIL_STOP):
-        return "trailing stop -8%"
-    if p < sma(c, 50):
-        return "trend broken (< SMA50)"
-    return None
+    hard, trail, s50 = pos["avg_cost"] * (1 - HARD_STOP), pos["peak"] * (1 - TRAIL_STOP), sma(c, 50)
+    rules = [("硬止损 -7%", p <= hard, f"现价 ${p:.2f} {'≤' if p <= hard else '>'} 硬止损线 ${hard:.2f}（成本 ${pos['avg_cost']:.2f} 的 -7%）"),
+             ("回撤止盈 -8%", p <= trail, f"现价 ${p:.2f} {'≤' if p <= trail else '>'} 回撤线 ${trail:.2f}（持仓最高 ${pos['peak']:.2f} 的 -8%）"),
+             ("跌破50日均线", p < s50, f"现价 ${p:.2f} {'<' if p < s50 else '≥'} 50日均线 ${s50:.2f}")]
+    checks = [{"text": txt, "ok": hit} for _, hit, txt in rules]
+    reason = next((n for n, hit, _ in rules if hit), None)
+    return reason, checks
+
+def entry_checks(c, spy, score, rank, slots):
+    s20, s50, r = sma(c, 20), sma(c, 50), rsi(c)
+    mom20 = c[-1] / c[-21] - 1
+    p = c[-1]
+    return [
+        {"text": f"现价 ${p:.2f} {'>' if p > s50 else '≤'} 50日均线 ${s50:.2f}", "ok": p > s50},
+        {"text": f"20日均线 ${s20:.2f} {'>' if s20 > s50 else '≤'} 50日均线 ${s50:.2f}（短期强于中期）", "ok": s20 > s50},
+        {"text": f"20日动量 {mom20:+.1%}（需为正）", "ok": mom20 > 0},
+        {"text": f"RSI {r:.0f}（需 < 75，避免追高）", "ok": r < 75},
+        {"text": f"大盘 SPY ${spy[-1]:.2f} {'>' if spy[-1] > sma(spy, 200) else '≤'} 200日均线 ${sma(spy, 200):.2f}（牛市过滤）", "ok": spy[-1] > sma(spy, 200)},
+        {"text": f"候选中 60日动量排第 {rank} 位（{score:+.1%}），剩余仓位名额 {slots}", "ok": True},
+    ]
 
 
 # ---------- engine ----------
@@ -76,23 +96,32 @@ def new_state():
 def equity_of(state, prices):
     return state["cash"] + sum(p["shares"] * prices[s] for s, p in state["positions"].items())
 
-def sell(state, sym, price, ts, reason):
+def sell(state, sym, price, ts, reason, c, checks):
     pos = state["positions"].pop(sym)
     px = price * (1 - SLIPPAGE)
     state["cash"] += pos["shares"] * px
-    state["trades"].append({"time": ts, "side": "SELL", "symbol": sym, "shares": round(pos["shares"], 4),
-                            "price": round(px, 2), "pnl": round(pos["shares"] * (px - pos["avg_cost"]), 2),
-                            "reason": reason})
+    days = (datetime.fromisoformat(ts[:10]) - datetime.fromisoformat(pos["entry"][:10])).days
+    state["trades"].append({"id": len(state["trades"]), "time": ts, "side": "SELL", "symbol": sym,
+                            "shares": round(pos["shares"], 4), "price": round(px, 2),
+                            "pnl": round(pos["shares"] * (px - pos["avg_cost"]), 2), "reason": reason,
+                            "detail": {"avg_cost": round(pos["avg_cost"], 2), "peak": round(pos["peak"], 2),
+                                       "entry": pos["entry"], "held_days": days,
+                                       "ret": round(px / pos["avg_cost"] - 1, 4),
+                                       "checks": checks, "ind": snap(c)}})
 
-def buy(state, sym, price, ts, dollars, reason):
+def buy(state, sym, price, ts, dollars, reason, c, checks, extra):
     px = price * (1 + SLIPPAGE)
     shares = math.floor(dollars / px * 10000) / 10000
     if shares <= 0:
         return
+    eq_before = state["cash"]
     state["cash"] -= shares * px
     state["positions"][sym] = {"shares": shares, "avg_cost": px, "peak": px, "entry": ts}
-    state["trades"].append({"time": ts, "side": "BUY", "symbol": sym, "shares": shares,
-                            "price": round(px, 2), "pnl": None, "reason": reason})
+    state["trades"].append({"id": len(state["trades"]), "time": ts, "side": "BUY", "symbol": sym,
+                            "shares": shares, "price": round(px, 2), "pnl": None, "reason": reason,
+                            "detail": {"amount": round(shares * px, 2), "cash_before": round(eq_before, 2),
+                                       "cash_after": round(state["cash"], 2), "checks": checks,
+                                       "ind": snap(c), **extra}})
 
 def step(state, closes, ts, trade=True):
     """closes: {sym: [daily closes..., latest price]}. One decision round."""
@@ -100,22 +129,25 @@ def step(state, closes, ts, trade=True):
     if trade:
         today = ts[:10]
         for sym in list(state["positions"]):
-            r = exit_reason(state["positions"][sym], closes[sym])
+            r, checks = exit_check(state["positions"][sym], closes[sym])
             if r:
-                sell(state, sym, prices[sym], ts, r)
+                sell(state, sym, prices[sym], ts, r, closes[sym], checks)
         if market_regime_ok(closes):
             held = state["positions"]
             sold_today = {t["symbol"] for t in state["trades"] if t["time"][:10] == today and t["side"] == "SELL"}
             cands = [(entry_score(closes[s]), s) for s in UNIVERSE
                      if s not in held and s not in sold_today and s in closes]
             cands = sorted([c for c in cands if c[0] is not None], reverse=True)
-            for score, sym in cands:
+            for rank, (score, sym) in enumerate(cands, 1):
                 if len(state["positions"]) >= MAX_POSITIONS:
                     break
                 eq = equity_of(state, prices)
                 dollars = min(eq * TARGET_WEIGHT, state["cash"])
                 if dollars >= 50:
-                    buy(state, sym, prices[sym], ts, dollars, f"uptrend, 60d momentum {score:+.1%}")
+                    slots = MAX_POSITIONS - len(state["positions"])
+                    chk = entry_checks(closes[sym], closes[BENCH], score, rank, slots)
+                    buy(state, sym, prices[sym], ts, dollars, f"上升趋势，60日动量 {score:+.1%}", closes[sym], chk,
+                        {"equity": round(eq, 2), "weight": round(dollars / eq, 3)})
     eq = equity_of(state, prices)
     spy_ret = prices[BENCH]
     state["prices"] = {k: round(v, 2) for k, v in prices.items()}
