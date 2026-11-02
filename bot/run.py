@@ -685,12 +685,13 @@ def run_live():
                 ctx[s] = d["day"]
         if BENCH not in closes:
             raise RuntimeError("benchmark quote unusable: " + "; ".join(notes))
-        client = aimod.Client()
+        client = aimod.Client(pinned=h.setdefault("ai", {}).setdefault("pinned", {}))
         h["ai"]["configured"] = client.names()
         if not client.providers:
             h["ai"]["last_error"] = "未配置任何 AI 服务（缺少 GEMINI_API_KEY，且 GitHub Models 不可用），C/D 账户暂不交易"
         apply_events(state, evmap, now.timestamp())
         step(state, closes, ctx, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), client if client.providers else None)
+        h["ai"]["configured"] = client.names()
         h.update(last_ok=ts, last_error="; ".join(notes) or None, fail_count=0)
         print("ok", {k: a["equity"][-1]["equity"] for k, a in state["accounts"].items()}, notes)
     except Exception as e:

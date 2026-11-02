@@ -9,6 +9,12 @@ The provider + model actually used is returned with every answer and stored with
 import json, os, random, re, time, urllib.error, urllib.request
 
 
+class ApiError(Exception):
+    def __init__(self, code, body=""):
+        super().__init__(f"HTTP {code} {body}".strip())
+        self.code, self.body = code, body
+
+
 def providers():
     env = os.environ.get
     ps = []
@@ -16,8 +22,9 @@ def providers():
         ps.append({"name": "custom", "url": env("AI_BASE_URL").rstrip("/") + "/chat/completions",
                    "key": env("AI_API_KEY"), "model": env("AI_MODEL") or "default"})
     if env("GEMINI_API_KEY"):
-        ps.append({"name": "gemini", "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                   "key": env("GEMINI_API_KEY"), "model": env("GEMINI_MODEL") or "gemini-2.5-flash"})
+        base = (env("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+        ps.append({"name": "gemini", "url": base + "/chat/completions", "key": env("GEMINI_API_KEY"),
+                   "model": env("GEMINI_MODEL") or "gemini-2.5-flash", "explicit": bool(env("GEMINI_MODEL"))})
     if env("GITHUB_TOKEN"):
         ps.append({"name": "github-models", "url": "https://models.github.ai/inference/chat/completions",
                    "key": env("GITHUB_TOKEN"), "model": env("GH_MODEL") or "openai/gpt-4.1-mini"})
@@ -25,8 +32,12 @@ def providers():
 
 
 class Client:
-    def __init__(self):
+    def __init__(self, pinned=None):
         self.providers = providers()
+        self.pinned = pinned if pinned is not None else {}      # provider -> model chosen by auto-discovery (persisted in state)
+        for p in self.providers:
+            if not p.get("explicit") and self.pinned.get(p["name"]):
+                p["model"] = self.pinned[p["name"]]
 
     def names(self):
         return [f"{p['name']}/{p['model']}" for p in self.providers]
@@ -35,24 +46,56 @@ class Client:
         errs = []
         for p in self.providers:
             try:
-                return self._call(p, messages), {"provider": p["name"], "model": p["model"], "fallback_errors": errs}
+                try:
+                    txt = self._call(p, messages)
+                except ApiError as e:
+                    if p["name"] == "gemini" and not p.get("explicit") and e.code in (400, 404):
+                        m = self._discover(p)            # configured model is gone: find a usable Flash model
+                        p["model"] = m
+                        txt = self._call(p, messages)
+                        self.pinned[p["name"]] = m
+                    else:
+                        raise
+                return txt, {"provider": p["name"], "model": p["model"], "fallback_errors": errs}
             except Exception as e:
-                errs.append(f"{p['name']}: {str(e)[:160]}")
+                errs.append(f"{p['name']}: {str(e)[:220]}")
         raise RuntimeError("all providers failed: " + " | ".join(errs))
 
     @staticmethod
-    def _call(p, messages):
+    def _open(req):
+        try:
+            with urllib.request.urlopen(req, timeout=90) as r:
+                raw = r.read()
+        except urllib.error.HTTPError as e:
+            raise ApiError(e.code, e.read().decode("utf-8", "replace")[:160].replace("\n", " "))
+        try:
+            return json.loads(raw)
+        except ValueError:
+            raise ApiError(0, f"non-JSON response: {raw[:100]!r}")
+
+    def _call(self, p, messages):
         body = json.dumps({"model": p["model"], "messages": messages, "temperature": 0, "max_tokens": 4096}).encode()
         for attempt in range(2):
             req = urllib.request.Request(p["url"], data=body, headers={
                 "Content-Type": "application/json", "Authorization": "Bearer " + p["key"]})
             try:
-                with urllib.request.urlopen(req, timeout=90) as r:
-                    return json.load(r)["choices"][0]["message"]["content"]
-            except urllib.error.HTTPError as e:
+                return self._open(req)["choices"][0]["message"]["content"]
+            except ApiError as e:
                 if e.code == 429 and attempt == 0:
                     time.sleep(25); continue
-                raise RuntimeError(f"HTTP {e.code}")
+                raise
+
+    def _discover(self, p):
+        url = p["url"].rsplit("/chat/completions", 1)[0] + "/models"
+        data = self._open(urllib.request.Request(url, headers={"Authorization": "Bearer " + p["key"]}))
+        ids = [str(x.get("id", "")).replace("models/", "") for x in data.get("data", [])]
+        bad = ("lite", "image", "tts", "live", "audio", "embed", "robotics", "computer", "vision", "exp")
+        flash = [i for i in ids if "flash" in i and not any(b in i for b in bad)]
+        stable = [i for i in flash if "preview" not in i] or flash
+        if not stable:
+            raise ApiError(404, "no usable flash model; available: " + ", ".join(ids[:15]))
+        ver = lambda s: [float(x) for x in re.findall(r"\d+(?:\.\d+)?", s)] or [0]
+        return sorted(stable, key=lambda s: (ver(s), -len(s)), reverse=True)[0]
 
 
 def extract_json(text):
