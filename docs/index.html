@@ -236,7 +236,7 @@ function route(){if(!S)return;killCharts();window.logN=40;const r=(location.hash
 $('dx').onclick=()=>$('dlg').close();$('dlg').onclick=e=>{if(e.target===$('dlg'))$('dlg').close()};
 window.onhashchange=route;
 fetch('data/state.json?'+Date.now()).then(r=>r.json()).then(s=>{S=s;
-  $('upd').innerHTML=`初始资金 ${usd(s.initial_cash)}<br>最后更新（美东）：${s.updated?fmtT(s.updated):'尚未运行'}`;
+  $('upd').innerHTML=`初始资金 ${usd(s.initial_cash)}<br>最后更新（美东）：${s.updated?fmtT(s.updated):'尚未运行'}<br>AI：${s.demo?'演示模式':((s.health?.ai?.configured||[]).join(' → ')||'未配置')}${s.health?.ai?.last_ok?`<br>AI 最近成功：${fmtT(s.health.ai.last_ok)}`:''}`;
   marketStrip();banners();route()}).catch(e=>{$('upd').textContent='加载失败：'+e});
 </script>
 </body></html>
