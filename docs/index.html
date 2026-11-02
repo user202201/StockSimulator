@@ -77,6 +77,7 @@ function render(){
   $('desc').textContent=a.desc;
   $('stats').innerHTML=[['总资产',usd(eq),''],['总盈亏',usd(pnl)+' ('+pct(pnl/S.initial_cash)+')',cls(pnl)],
     ['可用现金',usd(a.cash)+(uns>0?`<div class="k">另有 ${usd(uns)} 待交收</div>`:''),''],
+    ['已付交易费用',usd(a.fees_paid||0)+'<div class="k">仅卖出收取（SEC 费 + FINRA TAF）</div>',''],
     ['已平仓胜率',sells.length?Math.round(wins/sells.length*100)+'% ('+wins+'/'+sells.length+')':'—','']]
     .map(([k,v,c])=>`<div class="card"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join('');
   const rows=Object.entries(a.positions).map(([sym,p])=>{const px=S.prices[sym]??p.avg_cost,v=p.shares*px,u=v-p.shares*p.avg_cost;
@@ -104,6 +105,7 @@ function renderLog(a){
     $('dt').textContent=`${a.name} · ${buy?'买入':'卖出'} ${t.symbol} · ${D(t.time)}`;
     let h=`<div class="big ${buy?'up':'down'}">${t.reason}</div><div class="kv" style="margin-top:8px">
       <span>成交</span><div>${t.shares} 股 @ ${usd(t.price)}（${usd(t.shares*t.price)}）</div>`;
+    if(!buy&&t.fee!=null)h+=`<span>交易费用</span><div>${usd(t.fee)}（佣金 $0 + SEC 费 + FINRA TAF，已从卖出所得中扣除）</div>`;
     if(d.decided_at)h+=`<span>决策 → 成交</span><div>${d.decided_at.slice(5,16).replace('T',' ')} 决策价 ${usd(d.decision_price)} → ${t.time.slice(5,16).replace('T',' ')} 成交价 ${usd(t.price)}<br><small style="color:var(--mut)">含 0.05% 滑点；订单在下一次行情时成交</small></div>`;
     if(buy&&d.weight)h+=`<span>仓位占比</span><div>${(d.weight*100).toFixed(0)}% 总资产（${usd(d.equity)}）</div><span>现金变化</span><div>${usd(d.cash_before)} → ${usd(d.cash_after)}</div>`;
     if(!buy&&d.avg_cost)h+=`<span>持仓成本</span><div>${usd(d.avg_cost)}</div><span>持仓最高</span><div>${usd(d.peak)}</div><span>持有时间</span><div>${d.held_days} 天（${D(d.entry)} 买入）</div><span>资金</span><div>下一个交易日（T+1）可用</div>`;

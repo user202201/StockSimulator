@@ -11,6 +11,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  actions: write
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -46,6 +47,7 @@ jobs:
           STATE_PATH: databranch/state.json
 
       - name: Commit data to data branch
+        id: commit
         working-directory: databranch
         run: |
           git config user.name "trade-bot"; git config user.email "bot@users.noreply.github.com"
@@ -54,16 +56,21 @@ jobs:
             git commit -m "bot: $(date -u +%FT%TZ)"
             git pull --rebase origin data
             git push origin HEAD:data
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build site (dashboard + latest state)
+        if: steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p _site && cp -r docs/. _site/ && mkdir -p _site/data
           if [ -f databranch/state.json ]; then cp databranch/state.json _site/data/state.json; fi
 
       - uses: actions/configure-pages@v5
+        if: steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         with:
           path: _site
       - id: deploy
+        if: steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/deploy-pages@v4

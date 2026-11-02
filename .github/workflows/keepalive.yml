@@ -1,0 +1,30 @@
+name: keepalive
+# Weekly: real commit on the data branch + re-enable the trade workflow, so GitHub's
+# "disable scheduled workflows after 60 days of inactivity" rule cannot silently stop the experiment.
+on:
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Heartbeat commit on data branch
+        run: |
+          git config user.name "trade-bot"; git config user.email "bot@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch origin data
+            git checkout -B data origin/data
+            date -u +%FT%TZ > heartbeat.txt
+            git add heartbeat.txt
+            git commit -m "keepalive $(date -u +%F)" || true
+            git push origin data || true
+          fi
+      - name: Re-enable trade workflow
+        run: gh workflow enable trade.yml || true
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -34,7 +34,12 @@ MAX_POSITIONS = 4
 TARGET_WEIGHT = 0.25      # of total equity per position
 HARD_STOP = 0.07
 TRAIL_STOP = 0.08
-SLIPPAGE = 0.0005         # per side; US brokers are commission-free
+SLIPPAGE = 0.0005         # per side (spread / execution drift for liquid large caps)
+# Fee schedule, US retail brokers, 2026 (verify yearly - see EXPERIMENT.md):
+COMMISSION = 0.0          # $ per trade; mainstream US brokers are commission-free
+SEC_FEE_PER_MILLION = 20.60   # SEC Section 31, sells only, $ per $1M sold (effective 2026-04-04)
+TAF_PER_SHARE = 0.000195      # FINRA TAF, sells only, $ per share
+TAF_MIN, TAF_MAX = 0.01, 9.79 # per trade
 RANDOM_SELL_PROB = 0.06   # daily, per held position
 RANDOM_BUY_PROB = 0.20    # daily, when a slot is free
 STALE_SECS = 1800         # quote older than this => skip symbol
@@ -47,6 +52,16 @@ ACCOUNTS = {
     "equal": ("股票池等权持有", "基准：开局把本金等分买入股票池全部标的后不再操作，用来抵消“所选股票本来就是强势股”的偏差。"),
     "random": ("随机决策", "对照：买卖频率与规则策略相近，但标的和时机完全随机，用来检验策略是否真的优于运气。"),
 }
+
+
+def cent_up(x):
+    return math.ceil(round(x * 100, 6)) / 100
+
+def sell_fees(shares, gross):
+    """Regulatory fees charged on sales (passed through by most brokers) + commission."""
+    sec = max(cent_up(gross * SEC_FEE_PER_MILLION / 1e6), 0.01)
+    taf = min(max(cent_up(shares * TAF_PER_SHARE), TAF_MIN), TAF_MAX)
+    return round(COMMISSION + sec + taf, 2)
 
 
 # ---------- time helpers ----------
@@ -122,7 +137,7 @@ def exit_check(pos, c):
 # ---------- account engine ----------
 def new_account(name, desc):
     return {"name": name, "desc": desc, "cash": INITIAL_CASH, "unsettled": [], "positions": {},
-            "pending": [], "trades": [], "equity": [], "events": [], "last_decision": None}
+            "pending": [], "trades": [], "equity": [], "events": [], "last_decision": None, "fees_paid": 0.0}
 
 def new_state():
     return {"initial_cash": INITIAL_CASH, "accounts": {k: new_account(*v) for k, v in ACCOUNTS.items()},
@@ -157,7 +172,7 @@ def exec_buy(acct, o, price, ts):
     acct["cash"] -= shares * px
     acct["positions"][sym] = {"shares": shares, "avg_cost": px, "peak": px, "entry": ts}
     acct["trades"].append({"id": len(acct["trades"]), "time": ts, "side": "BUY", "symbol": sym, "shares": shares,
-                           "price": round(px, 2), "pnl": None, "reason": o["reason"],
+                           "price": round(px, 2), "fee": 0.0, "pnl": None, "reason": o["reason"],
                            "detail": {**o["detail"], "amount": round(shares * px, 2), "cash_before": round(before, 2),
                                       "cash_after": round(acct["cash"], 2), "decided_at": o["decided_at"],
                                       "decision_price": o["decision_price"]}})
@@ -166,14 +181,18 @@ def exec_sell(acct, o, price, ts):
     sym = o["symbol"]
     pos = acct["positions"].pop(sym)
     px = price * (1 - SLIPPAGE)
-    proceeds = pos["shares"] * px
+    gross = pos["shares"] * px
+    fee = sell_fees(pos["shares"], gross)
+    proceeds = gross - fee
+    acct["fees_paid"] = round(acct.get("fees_paid", 0) + fee, 2)
     acct["unsettled"].append({"amount": proceeds, "avail": next_trading_day(et_date(ts))})
     days = (datetime.fromisoformat(et_date(ts)) - datetime.fromisoformat(et_date(pos["entry"]))).days
+    cost = pos["shares"] * pos["avg_cost"]
     acct["trades"].append({"id": len(acct["trades"]), "time": ts, "side": "SELL", "symbol": sym,
-                           "shares": round(pos["shares"], 4), "price": round(px, 2),
-                           "pnl": round(proceeds - pos["shares"] * pos["avg_cost"], 2), "reason": o["reason"],
+                           "shares": round(pos["shares"], 4), "price": round(px, 2), "fee": fee,
+                           "pnl": round(proceeds - cost, 2), "reason": o["reason"],
                            "detail": {**o["detail"], "avg_cost": round(pos["avg_cost"], 2), "peak": round(pos["peak"], 2),
-                                      "entry": pos["entry"], "held_days": days, "ret": round(px / pos["avg_cost"] - 1, 4),
+                                      "entry": pos["entry"], "held_days": days, "ret": round(proceeds / cost - 1, 4),
                                       "decided_at": o["decided_at"], "decision_price": o["decision_price"]}})
 
 def fill_pending(acct, prices, fresh, ts):
@@ -266,6 +285,18 @@ def decide_random(acct, closes, ts, prices):
 DECIDE = {"rule": decide_rule, "spy": decide_spy, "equal": decide_equal, "random": decide_random}
 
 
+def compact_equity(acct, now_ts, keep_days=7):
+    """Keep full resolution for the last 7 days; older history is reduced to one point per day."""
+    cutoff = (parse_ts(now_ts) - timedelta(days=keep_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    eq = acct["equity"]
+    if not eq or eq[0]["time"] >= cutoff:
+        return
+    daily = {}
+    for e in eq:
+        if e["time"] < cutoff:
+            daily[et_date(e["time"])] = e
+    acct["equity"] = list(daily.values()) + [e for e in eq if e["time"] >= cutoff]
+
 def step(state, closes, ts):
     """One run. closes: {sym: [daily closes..., live price]} for symbols with fresh, sane quotes."""
     prices = state["prices"]
@@ -276,6 +307,7 @@ def step(state, closes, ts):
         fill_pending(acct, prices, set(closes), ts)
         DECIDE[aid](acct, closes, ts, prices)
         acct["equity"].append({"time": ts, "equity": round(equity_of(acct, prices), 2)})
+        compact_equity(acct, ts)
     state["updated"] = ts
 
 
