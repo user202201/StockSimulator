@@ -4,24 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Stock Simulator</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="vendor/chart.umd.js"></script>
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--fg:#1a1d21;--mut:#6b7280;--line:#e5e7eb;--up:#0a8f4d;--down:#d33a2c;--acc:#2563eb}
-@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#171b22;--fg:#e6e8eb;--mut:#8b95a3;--line:#262c36;--up:#3ccf80;--down:#ff6b5e;--acc:#6ea0ff}}
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1a1d21;--mut:#6b7280;--line:#e5e7eb;--up:#0a8f4d;--down:#d33a2c}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#171b22;--fg:#e6e8eb;--mut:#8b95a3;--line:#262c36;--up:#3ccf80;--down:#ff6b5e}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:960px;margin:0 auto;padding:16px}
+main{max-width:980px;margin:0 auto;padding:16px}
 h1{font-size:18px;margin:0 0 2px}h2{font-size:14px;margin:0 0 10px;color:var(--mut);font-weight:600}
 .sub{color:var(--mut);font-size:12px;margin-bottom:12px}
-.banner{background:#fff3cd;color:#664d03;padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:13px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.banner{padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:13px}
+.warn{background:#fff3cd;color:#664d03}.err{background:#fde2e0;color:#8a1c12}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
-.grid .card{margin:0}.k{color:var(--mut);font-size:12px}.v{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
+.grid .card{margin:0}.k{color:var(--mut);font-size:12px}.v{font-size:19px;font-weight:650;font-variant-numeric:tabular-nums}
 .up{color:var(--up)}.down{color:var(--down)}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
 th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:500;font-size:12px}
-.scroll{overflow-x:auto}.chart{position:relative;height:280px}
-td.r{text-align:left;white-space:normal;color:var(--mut);font-size:12px}
+.scroll{overflow-x:auto}.chart{position:relative;height:300px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px}
+tr.cmp{cursor:pointer}tr.cmp:hover td{background:var(--bg)}tr.sel td{background:var(--bg);font-weight:600}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tab{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
+.tab.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.desc{color:var(--mut);font-size:12px;margin-bottom:10px}
 .item{display:flex;gap:10px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:6px}
 .item:hover{background:var(--bg)}.item:last-child{border-bottom:0}
 .d{color:var(--mut);font-size:12px;width:86px;flex:none;font-variant-numeric:tabular-nums}
@@ -30,82 +36,107 @@ td.r{text-align:left;white-space:normal;color:var(--mut);font-size:12px}
 .main{flex:1;min-width:0}.main b{margin-right:6px}.sum{color:var(--mut);font-size:12px}
 .res{font-weight:600;font-variant-numeric:tabular-nums;text-align:right;flex:none}
 .empty{text-align:center;color:var(--mut);padding:16px}
-dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);padding:0;width:min(520px,calc(100vw - 32px));max-height:85vh;overflow:auto}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);padding:0;width:min(540px,calc(100vw - 32px));max-height:85vh;overflow:auto}
 dialog::backdrop{background:rgba(0,0,0,.45)}
 .dh{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)}
 .dh button{border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer}
 #db{padding:12px 16px 16px}#db h3{font-size:13px;margin:14px 0 6px;color:var(--mut)}
-.kv{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}.kv span{color:var(--mut)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px}.kv span{color:var(--mut)}
 .chk{list-style:none;margin:0;padding:0}.chk li{padding:4px 0;display:flex;gap:8px}.chk i{font-style:normal;flex:none;width:18px}
 .big{font-size:15px;font-weight:600}
 </style>
 </head>
 <body><main>
-<h1>📈 美股模拟交易</h1>
+<h1>📈 美股模拟交易实验</h1>
 <div class="sub" id="upd">加载中…</div>
 <div id="banner"></div>
-<div class="grid" id="stats"></div>
-<div class="card"><h2>净值曲线（对比 SPY 买入持有，起点归一为初始资金）</h2><div class="chart"><canvas id="ch"></canvas></div></div>
-<div class="card"><h2>当前持仓</h2><div class="scroll"><table id="pos"></table></div></div>
+<div class="card"><h2>账户对比（点击一行查看该账户详情）</h2><div class="scroll"><table id="cmp"></table></div></div>
+<div class="card"><h2>收益率曲线（相对初始资金 %）</h2><div class="chart"><canvas id="ch"></canvas></div></div>
+<div class="tabs" id="tabs"></div>
+<div class="card"><div class="desc" id="desc"></div><div class="grid" id="stats" style="margin:0"></div></div>
+<div class="card"><h2>当前持仓与待成交订单</h2><div class="scroll"><table id="pos"></table></div></div>
 <div class="card"><h2>决策日志（点击条目查看详细原因）</h2><div id="log"></div></div>
 <dialog id="dlg"><div class="dh"><b id="dt"></b><button id="dx" aria-label="关闭">✕</button></div><div id="db"></div></dialog>
-</main>
 <script>
 const $=id=>document.getElementById(id);
 const usd=x=>(x<0?'-':'')+'$'+Math.abs(x).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const pct=x=>(x>=0?'+':'')+(x*100).toFixed(2)+'%';
-const cls=x=>x>=0?'up':'down';
-fetch('data/state.json?'+Date.now()).then(r=>r.json()).then(s=>{
-  const eq=s.equity.length?s.equity[s.equity.length-1].equity:s.initial_cash;
-  const pnl=eq-s.initial_cash, sells=s.trades.filter(t=>t.side==='SELL');
-  const wins=sells.filter(t=>t.pnl>0).length;
-  $('upd').textContent='最后更新：'+(s.updated?new Date(s.updated).toLocaleString():'尚未运行');
-  if(s.demo)$('banner').innerHTML='<div class="banner">⚠️ 当前为<b>离线演示数据</b>（随机生成的价格），GitHub Actions 首次真实运行后会自动替换。</div>';
-  const b0=s.equity[0]?.bench, b1=s.equity.at(-1)?.bench, bret=b0?b1/b0-1:0;
-  const cards=[['总资产',usd(eq),''],['总盈亏',usd(pnl)+' ('+pct(pnl/s.initial_cash)+')',cls(pnl)],
-    ['现金',usd(s.cash),''],['SPY 同期',pct(bret),cls(bret)],
-    ['已平仓胜率',sells.length?Math.round(wins/sells.length*100)+'% ('+wins+'/'+sells.length+')':'—','']];
-  $('stats').innerHTML=cards.map(([k,v,c])=>`<div class="card"><div class="k">${k}</div><div class="v ${c}" style="${k==='总资产'?'':'font-size:17px'}">${v}</div></div>`).join('');
-  const rows=Object.entries(s.positions).map(([sym,p])=>{const px=s.prices[sym]??p.avg_cost,v=p.shares*px,u=v-p.shares*p.avg_cost;
-    return `<tr><td><b>${sym}</b></td><td>${p.shares}</td><td>${usd(p.avg_cost)}</td><td>${usd(px)}</td><td>${usd(v)}</td><td class="${cls(u)}">${usd(u)} (${pct(px/p.avg_cost-1)})</td></tr>`});
-  $('pos').innerHTML='<tr><th>代码</th><th>股数</th><th>成本</th><th>现价</th><th>市值</th><th>浮动盈亏</th></tr>'+(rows.join('')||'<tr><td colspan=6 style="text-align:center;color:var(--mut)">空仓</td></tr>');
-  const T=s.trades, fmtD=x=>x.slice(0,10), fmtN=x=>x==null?'—':x;
-  const closeOf=b=>T.find(x=>x.side==='SELL'&&x.symbol===b.symbol&&x.id>b.id);
-  const openOf=sl=>[...T].reverse().find(x=>x.side==='BUY'&&x.symbol===sl.symbol&&x.id<sl.id);
-  function outcome(t){ // {text, val, label}
-    if(t.side==='SELL')return {val:t.detail?.ret??0,pnl:t.pnl,text:`${pct(t.detail?.ret??0)} · ${usd(t.pnl)}`,sum:`持有${t.detail?.held_days??'?'}天后卖出`};
-    const c=closeOf(t);
-    if(c){const r=c.price/t.price-1;return {val:r,pnl:c.pnl,text:`${pct(r)} · ${usd(c.pnl)}`,sum:'已平仓'}}
-    const px=s.prices[t.symbol]??t.price,r=px/t.price-1;
-    return {val:r,pnl:t.shares*(px-t.price),text:pct(r)+' · '+usd(t.shares*(px-t.price)),sum:'持仓中（浮动）'};
-  }
-  $('log').innerHTML=T.length?[...T].reverse().map(t=>{const o=outcome(t);
-    return `<div class="item" data-id="${t.id}"><span class="d">${fmtD(t.time)}</span><span class="badge ${t.side}">${t.side==='BUY'?'买入':'卖出'}</span>
+const cls=x=>x>=0?'up':'down', D=x=>x.slice(0,10), fmt=x=>x==null?'—':x;
+const COLORS={rule:'#2563eb',spy:'#8b95a3',equal:'#0d9488',random:'#d97706',ai:'#7c3aed'};
+let S,cur='rule';
+const last=a=>a.equity.length?a.equity.at(-1).equity:S.initial_cash;
+function maxdd(a){let pk=0,m=0;for(const e of a.equity){pk=Math.max(pk,e.equity);m=Math.min(m,e.equity/pk-1)}return m}
+function render(){
+  const ids=Object.keys(S.accounts), spyRet=last(S.accounts.spy||{equity:[]})/S.initial_cash-1;
+  $('cmp').innerHTML='<tr><th>账户</th><th>总资产</th><th>收益率</th><th>相对 SPY</th><th>最大回撤</th><th>成交笔数</th></tr>'+ids.map(id=>{
+    const a=S.accounts[id],r=last(a)/S.initial_cash-1;
+    return `<tr class="cmp ${id===cur?'sel':''}" data-id="${id}"><td><span class="dot" style="background:${COLORS[id]||'#999'}"></span>${a.name}</td><td>${usd(last(a))}</td><td class="${cls(r)}">${pct(r)}</td><td class="${cls(r-spyRet)}">${id==='spy'?'—':pct(r-spyRet)}</td><td class="down">${pct(maxdd(a))}</td><td>${a.trades.length}</td></tr>`}).join('');
+  $('tabs').innerHTML=ids.map(id=>`<button class="tab ${id===cur?'on':''}" data-id="${id}">${S.accounts[id].name}</button>`).join('');
+  const a=S.accounts[cur],eq=last(a),pnl=eq-S.initial_cash,sells=a.trades.filter(t=>t.side==='SELL'),wins=sells.filter(t=>t.pnl>0).length;
+  const uns=a.unsettled.reduce((s,u)=>s+u.amount,0);
+  $('desc').textContent=a.desc;
+  $('stats').innerHTML=[['总资产',usd(eq),''],['总盈亏',usd(pnl)+' ('+pct(pnl/S.initial_cash)+')',cls(pnl)],
+    ['可用现金',usd(a.cash)+(uns>0?`<div class="k">另有 ${usd(uns)} 待交收</div>`:''),''],
+    ['已平仓胜率',sells.length?Math.round(wins/sells.length*100)+'% ('+wins+'/'+sells.length+')':'—','']]
+    .map(([k,v,c])=>`<div class="card"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join('');
+  const rows=Object.entries(a.positions).map(([sym,p])=>{const px=S.prices[sym]??p.avg_cost,v=p.shares*px,u=v-p.shares*p.avg_cost;
+    return `<tr><td><b>${sym}</b></td><td>持仓</td><td>${p.shares}</td><td>${usd(p.avg_cost)}</td><td>${usd(px)}</td><td>${usd(v)}</td><td class="${cls(u)}">${usd(u)} (${pct(px/p.avg_cost-1)})</td></tr>`})
+   .concat(a.pending.map(o=>`<tr><td><b>${o.symbol}</b></td><td>待${o.side==='BUY'?'买入':'卖出'}</td><td>—</td><td colspan=2>决策价 ${usd(o.decision_price)}</td><td>${o.dollars?usd(o.dollars):'全部'}</td><td style="color:var(--mut)">下次行情时成交</td></tr>`));
+  $('pos').innerHTML='<tr><th>代码</th><th>状态</th><th>股数</th><th>成本</th><th>现价</th><th>市值/金额</th><th>浮动盈亏</th></tr>'+(rows.join('')||'<tr><td colspan=7 style="text-align:center;color:var(--mut)">空仓</td></tr>');
+  renderLog(a);
+}
+function outcome(a,t){
+  const T=a.trades;
+  if(t.side==='SELL')return {val:t.detail?.ret??0,text:`${pct(t.detail?.ret??0)} · ${usd(t.pnl)}`,sum:`持有${t.detail?.held_days??'?'}天后卖出`};
+  const c=T.find(x=>x.side==='SELL'&&x.symbol===t.symbol&&x.id>t.id);
+  if(c){const r=c.price/t.price-1;return {val:r,text:`${pct(r)} · ${usd(c.pnl)}`,sum:'已平仓'}}
+  const px=S.prices[t.symbol]??t.price,r=px/t.price-1,p=t.shares*(px-t.price);
+  return {val:r,text:pct(r)+' · '+usd(p),sum:'持仓中（浮动）'};
+}
+function renderLog(a){
+  const T=a.trades, li=(c,y,n)=>`<li><i>${c.ok?y:n}</i><span>${c.text}</span></li>`;
+  $('log').innerHTML=T.length?[...T].reverse().map(t=>{const o=outcome(a,t);
+    return `<div class="item" data-id="${t.id}"><span class="d">${D(t.time)}</span><span class="badge ${t.side}">${t.side==='BUY'?'买入':'卖出'}</span>
     <div class="main"><b>${t.symbol}</b>${t.shares}股 @ ${usd(t.price)}<div class="sum">${t.reason} · ${o.sum}</div></div>
-    <span class="res ${cls(o.val)}">${o.text}</span></div>`}).join(''):'<div class="empty">暂无决策</div>';
-  const li=(c,y,n)=>`<li><i>${c.ok?y:n}</i><span>${c.text}</span></li>`;
+    <span class="res ${cls(o.val)}">${o.text}</span></div>`}).join(''):'<div class="empty">暂无成交</div>';
   $('log').onclick=e=>{const el=e.target.closest('.item');if(!el)return;
-    const t=T.find(x=>x.id==el.dataset.id),d=t.detail,o=outcome(t),buy=t.side==='BUY';
-    $('dt').textContent=`${buy?'买入':'卖出'} ${t.symbol} · ${fmtD(t.time)}`;
-    let h=`<div class="big ${buy?'up':'down'}">${t.reason}</div>
-      <div class="kv" style="margin-top:8px"><span>成交</span><div>${t.shares} 股 @ ${usd(t.price)}</div>
-      <span>${buy?'买入金额':'成交金额'}</span><div>${usd(t.shares*t.price)}</div>`;
-    if(d&&buy)h+=`<span>仓位占比</span><div>${(d.weight*100).toFixed(0)}% 总资产（${usd(d.equity)}）</div><span>现金变化</span><div>${usd(d.cash_before)} → ${usd(d.cash_after)}</div>`;
-    if(d&&!buy)h+=`<span>持仓成本</span><div>${usd(d.avg_cost)}</div><span>持仓最高</span><div>${usd(d.peak)}</div><span>持有时间</span><div>${d.held_days} 天（${fmtD(d.entry)} 买入）</div>`;
+    const t=T.find(x=>x.id==el.dataset.id),d=t.detail||{},o=outcome(a,t),buy=t.side==='BUY';
+    $('dt').textContent=`${a.name} · ${buy?'买入':'卖出'} ${t.symbol} · ${D(t.time)}`;
+    let h=`<div class="big ${buy?'up':'down'}">${t.reason}</div><div class="kv" style="margin-top:8px">
+      <span>成交</span><div>${t.shares} 股 @ ${usd(t.price)}（${usd(t.shares*t.price)}）</div>`;
+    if(d.decided_at)h+=`<span>决策 → 成交</span><div>${d.decided_at.slice(5,16).replace('T',' ')} 决策价 ${usd(d.decision_price)} → ${t.time.slice(5,16).replace('T',' ')} 成交价 ${usd(t.price)}<br><small style="color:var(--mut)">含 0.05% 滑点；订单在下一次行情时成交</small></div>`;
+    if(buy&&d.weight)h+=`<span>仓位占比</span><div>${(d.weight*100).toFixed(0)}% 总资产（${usd(d.equity)}）</div><span>现金变化</span><div>${usd(d.cash_before)} → ${usd(d.cash_after)}</div>`;
+    if(!buy&&d.avg_cost)h+=`<span>持仓成本</span><div>${usd(d.avg_cost)}</div><span>持仓最高</span><div>${usd(d.peak)}</div><span>持有时间</span><div>${d.held_days} 天（${D(d.entry)} 买入）</div><span>资金</span><div>下一个交易日（T+1）可用</div>`;
     h+='</div>';
-    if(d?.checks)h+=`<h3>${buy?'买入条件（全部满足才买）':'卖出规则触发情况（任一触发即卖）'}</h3><ul class="chk">${d.checks.map(c=>li(c,buy?'✅':'🔔',buy?'❌':'·')).join('')}</ul>`;
-    if(d?.ind){const i=d.ind;h+=`<h3>决策时的指标</h3><div class="kv"><span>价格</span><div>${usd(i.price)}</div><span>SMA20 / SMA50</span><div>${fmtN(i.sma20?.toFixed(2))} / ${fmtN(i.sma50?.toFixed(2))}</div><span>RSI(14)</span><div>${fmtN(i.rsi?.toFixed(0))}</div><span>20日 / 60日动量</span><div>${i.mom20==null?'—':pct(i.mom20)} / ${i.mom60==null?'—':pct(i.mom60)}</div></div>`}
+    if(d.checks)h+=`<h3>${buy?'买入依据':'卖出规则触发情况'}</h3><ul class="chk">${d.checks.map(c=>li(c,buy?'✅':'🔔',buy?'❌':'·')).join('')}</ul>`;
+    if(d.ind){const i=d.ind;h+=`<h3>决策时的指标</h3><div class="kv"><span>价格</span><div>${usd(i.price)}</div><span>SMA20 / SMA50</span><div>${fmt(i.sma20?.toFixed(2))} / ${fmt(i.sma50?.toFixed(2))}</div><span>RSI(14)</span><div>${fmt(i.rsi?.toFixed(0))}</div><span>20日 / 60日动量</span><div>${i.mom20==null?'—':pct(i.mom20)} / ${i.mom60==null?'—':pct(i.mom60)}</div></div>`}
     h+=`<h3>结果</h3><div class="big ${cls(o.val)}">${o.text}　<span class="sum">${o.sum}</span></div>`;
     $('db').innerHTML=h;$('dlg').showModal()};
-  $('dx').onclick=()=>$('dlg').close();
-  $('dlg').onclick=e=>{if(e.target===$('dlg'))$('dlg').close()};
-  try{
-  const lab=s.equity.map(e=>e.time.slice(5,16).replace('T',' ')), base=s.equity[0]?.bench||1;
-  new Chart($('ch'),{type:'line',data:{labels:lab,datasets:[
-    {label:'策略',data:s.equity.map(e=>e.equity),borderColor:getComputedStyle(document.body).getPropertyValue('--acc')||'#2563eb',borderWidth:2,pointRadius:0,tension:.15},
-    {label:'SPY',data:s.equity.map(e=>e.bench/base*s.initial_cash),borderColor:'#9ca3af',borderWidth:1.5,borderDash:[4,3],pointRadius:0}]},
-    options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},scales:{x:{ticks:{maxTicksLimit:8}}}}});
-  }catch(e){$('ch').parentNode.textContent='图表库加载失败（'+e.message+'）'}
-}).catch(e=>{$('upd').textContent='加载失败：'+e});
+}
+function banners(){
+  let h='';const hl=S.health||{};
+  if(S.demo)h+='<div class="banner warn">⚠️ 当前为<b>离线演示数据</b>（随机生成的价格），机器人首次真实运行后会自动替换。</div>';
+  if(!S.demo&&hl.fail_count>0)h+=`<div class="banner err">🚨 机器人最近连续失败 ${hl.fail_count} 次：${hl.last_error||''}</div>`;
+  else if(!S.demo&&hl.last_error)h+=`<div class="banner warn">ℹ️ 最近一次运行有数据问题：${hl.last_error}</div>`;
+  if(!S.demo&&hl.last_ok){let d=new Date(hl.last_ok),now=new Date(),miss=0;
+    for(let x=new Date(d.getTime()+864e5);x<new Date(now.toDateString());x=new Date(x.getTime()+864e5))if(x.getDay()%6)miss++;
+    if(miss>=1)h+=`<div class="banner warn">⏱ 已超过 ${miss} 个工作日没有成功更新（可能是休市日，也可能是机器人停了，请检查 Actions）。</div>`}
+  $('banner').innerHTML=h;
+}
+function chart(){
+  const ids=Object.keys(S.accounts),base=S.accounts[ids[0]].equity;
+  try{new Chart($('ch'),{type:'line',data:{labels:base.map(e=>e.time.slice(5,16).replace('T',' ')),datasets:ids.map(id=>({label:S.accounts[id].name,
+    data:S.accounts[id].equity.map(e=>(e.equity/S.initial_cash-1)*100),borderColor:COLORS[id]||'#999',borderWidth:id==='rule'?2.5:1.6,pointRadius:0,tension:.15}))},
+    options:{maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toFixed(2)}%`}}},scales:{x:{ticks:{maxTicksLimit:8}},y:{ticks:{callback:v=>v+'%'}}}}})}
+  catch(e){$('ch').parentNode.textContent='图表加载失败：'+e.message}
+}
+const pick=id=>{if(id){cur=id;render()}};
+$('cmp').onclick=e=>pick(e.target.closest('tr')?.dataset.id);
+$('tabs').onclick=e=>pick(e.target.closest('button')?.dataset.id);
+$('dx').onclick=()=>$('dlg').close();
+$('dlg').onclick=e=>{if(e.target===$('dlg'))$('dlg').close()};
+fetch('data/state.json?'+Date.now()).then(r=>r.json()).then(s=>{S=s;
+  $('upd').textContent='最后更新：'+(s.updated?new Date(s.updated).toLocaleString():'尚未运行')+' · 初始资金 '+usd(s.initial_cash)+' · 所有账户同起点';
+  banners();render();chart()}).catch(e=>{$('upd').textContent='加载失败：'+e});
 </script>
-</body></html>
+</main></body></html>

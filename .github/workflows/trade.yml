@@ -1,22 +1,69 @@
 name: trade
 on:
   schedule:
-    # every 15 min, 13:00-21:00 UTC Mon-Fri (covers US market hours in both DST/standard time)
+    # every 15 min, 13:00-20:59 UTC Mon-Fri; the bot itself checks the real market session
     - cron: "*/15 13-20 * * 1-5"
   workflow_dispatch:
-concurrency: trade
+concurrency:
+  group: trade
+  cancel-in-progress: false
 permissions:
   contents: write
+  pages: write
+  id-token: write
 jobs:
   run:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: python bot/run.py
-      - name: Commit state
+
+      - name: Ensure data branch exists
         run: |
           git config user.name "trade-bot"; git config user.email "bot@users.noreply.github.com"
-          git add docs/data/state.json
-          git diff --cached --quiet || (git commit -m "bot: update $(date -u +%FT%TZ)" && git pull --rebase && git push)
+          if ! git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git checkout --orphan data
+            git rm -rf . >/dev/null
+            echo "# bot data (auto-generated, do not edit)" > README.md
+            git add README.md && git commit -m "init data branch" && git push origin data
+            git checkout -f "$GITHUB_REF_NAME"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: databranch
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run bot
+        run: python bot/run.py
+        env:
+          STATE_PATH: databranch/state.json
+
+      - name: Commit data to data branch
+        working-directory: databranch
+        run: |
+          git config user.name "trade-bot"; git config user.email "bot@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "bot: $(date -u +%FT%TZ)"
+            git pull --rebase origin data
+            git push origin HEAD:data
+          fi
+
+      - name: Build site (dashboard + latest state)
+        run: |
+          mkdir -p _site && cp -r docs/. _site/ && mkdir -p _site/data
+          if [ -f databranch/state.json ]; then cp databranch/state.json _site/data/state.json; fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
