@@ -59,6 +59,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
  .app{grid-template-columns:1fr}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}
  #nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}.navl{display:none}.nav{flex:none;border:1px solid var(--line)}
  main{padding:12px}.two{grid-template-columns:1fr}}
+.hl td{background:rgba(37,99,235,.09)}
 </style>
 </head>
 <body>
@@ -134,12 +135,15 @@ function overview(){
   $('page').innerHTML=`<div class="card"><h2>🏆 排名（按总收益率）</h2><div class="scroll"><table class="rk2"><tr><th>名次</th><th>账户</th><th>总资产</th><th>总收益</th><th>今日盈亏</th><th>相对 SPY</th><th>最大回撤</th><th>持仓数</th><th>成交</th></tr>${rows}</table></div></div>
    <div class="card"><h2>收益率曲线（相对初始资金 %，虚线为对照组）</h2><div class="chart"><canvas id="c1"></canvas></div></div>
    <div class="card"><h2>四位交易员现在各持有什么</h2><div class="pos-grid">${cards}</div></div>
-   <div class="card"><h2>市场观察：21 只股票（谁持有：${TRADERS.map(letter).join('')}）</h2>${marketTable(null)}</div>`;
+   <div class="card"><h2>市场观察：21 只股票（已被持有的排在最前；谁持有：${TRADERS.map(letter).join('')}）</h2>${marketTable(null)}</div>`;
   lineChart('c1',Object.keys(S.accounts));bindGo()}
 function marketTable(a){
-  const syms=(S.universe||Object.keys(S.market||{})).filter(s=>M(s).price).sort((x,y)=>M(y).day-M(x).day);
+  const pendBuy=s=>a&&a.pending.some(o=>o.side==='BUY'&&o.symbol===s);
+  const rk=s=>a&&a.positions[s]?0:pendBuy(s)?1:TRADERS.some(id=>S.accounts[id]&&S.accounts[id].positions[s])?2:3;   // this account's holdings first, then pending, then held by others
+  const syms=(S.universe||Object.keys(S.market||{})).filter(s=>M(s).price).sort((x,y)=>rk(x)-rk(y)||M(y).day-M(x).day);
   return `<div class="scroll"><table><tr><th>代码</th><th>现价</th><th>今日</th><th>近 40 日</th><th>趋势</th><th>RSI</th><th>20日动量</th><th>60日动量</th><th>持有者</th></tr>${syms.map(s=>{const m=M(s);
-   return `<tr><td><b>${s}</b></td><td>${usd(m.price)}</td><td class="${cls(m.day)}">${pct(m.day)}</td><td>${spark(m.spark)}</td>
+   const r=rk(s),tg=a&&r===0?'<span class="tag">持有</span>':a&&r===1?'<span class="tag">待买入</span>':'';
+   return `<tr class="${(a?r<=1:r<=2)?'hl':''}"><td><b>${s}</b>${tg}</td><td>${usd(m.price)}</td><td class="${cls(m.day)}">${pct(m.day)}</td><td>${spark(m.spark)}</td>
    <td>${m.price>m.sma50?(m.sma20>m.sma50?'<span class="up">↗ 上升</span>':'<span class="mut">站上50日线</span>'):'<span class="down">↘ 走弱</span>'}</td>
    <td>${m.rsi}</td><td class="${cls(m.mom20)}">${pct(m.mom20)}</td><td class="${cls(m.mom60)}">${pct(m.mom60)}</td><td>${holders(s)}</td></tr>`}).join('')}</table></div>`}
 
@@ -196,7 +200,7 @@ function traderPage(id){
    ${a.pending.length?`<div class="card"><h2>待成交订单（已决策，将在下一次行情时成交；点击看原因）</h2><div class="scroll"><table><tr><th>代码</th><th>动作</th><th>决策时间(ET)</th><th>决策价</th><th>现价</th><th>金额</th><th style="text-align:left">原因</th></tr>${pend}</table></div></div>`:''}
    ${candidates(a)}${ai}
    <div class="card"><h2>成交与决策日志（点击条目查看详细原因）</h2>${log}</div>
-   <div class="card"><h2>市场观察：21 只股票</h2>${marketTable(a)}</div>`;
+   <div class="card"><h2>市场观察：21 只股票（本账户持有和待买入的排在最前）</h2>${marketTable(a)}</div>`;
   lineChart('c2',[id,'spy','equal'].filter(i=>S.accounts[i]).filter((v,i,ar)=>ar.indexOf(v)===i));
   $('page').querySelectorAll('[data-pos]').forEach(el=>el.onclick=()=>{const t=[...a.trades].reverse().find(x=>x.side==='BUY'&&x.symbol===el.dataset.pos);if(t)detail(a,t)});
   $('page').querySelectorAll('[data-pend]').forEach(el=>el.onclick=()=>detail(a,a.pending[+el.dataset.pend],true));
