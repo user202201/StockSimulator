@@ -205,18 +205,18 @@ def queue(acct, side, sym, ts, price, reason, detail, dollars=None):
     acct["pending"].append({"side": side, "symbol": sym, "dollars": dollars, "reason": reason,
                             "decided_at": ts, "decision_price": round(price, 2), "detail": detail})
 
-def exec_buy(acct, o, price, ts):
+def exec_buy(acct, o, price, ts, spy_px=None):
     sym, px = o["symbol"], price * (1 + SLIPPAGE)
     shares = math.floor(min(o["dollars"], acct["cash"]) / px * 10000) / 10000
     if shares <= 0 or sym in acct["positions"]:
         return
     before = acct["cash"]
     acct["cash"] -= shares * px
-    acct["positions"][sym] = {"shares": shares, "avg_cost": px, "peak": px, "entry": ts}
+    acct["positions"][sym] = {"shares": shares, "avg_cost": px, "peak": px, "entry": ts, "spy_px": spy_px}
     acct["trades"].append({"id": len(acct["trades"]), "time": ts, "side": "BUY", "symbol": sym, "shares": shares,
                            "price": round(px, 2), "fee": 0.0, "pnl": None, "reason": o["reason"],
                            "detail": {**o["detail"], "amount": round(shares * px, 2), "cash_before": round(before, 2),
-                                      "cash_after": round(acct["cash"], 2), "decided_at": o["decided_at"],
+                                      "cash_after": round(acct["cash"], 2), "spy_px": spy_px, "decided_at": o["decided_at"],
                                       "decision_price": o["decision_price"]}})
 
 def exec_sell(acct, o, price, ts):
@@ -244,7 +244,7 @@ def fill_pending(acct, prices, fresh, ts):
         if sym not in fresh:
             keep.append(o); continue
         if o["side"] == "BUY":
-            exec_buy(acct, o, prices[sym], ts)
+            exec_buy(acct, o, prices[sym], ts, prices.get(BENCH))
         elif sym in acct["positions"]:
             exec_sell(acct, o, prices[sym], ts)
     acct["pending"] = keep
@@ -544,11 +544,25 @@ def compact_equity(acct, now_ts, keep_days=7):
             daily[et_date(e["time"])] = e
     acct["equity"] = list(daily.values()) + [e for e in eq if e["time"] >= cutoff]
 
+def market_snapshot(closes, ctx, ts):
+    out = {}
+    for s, c in closes.items():
+        if len(c) < 61:
+            continue
+        i, o = snap(c), ctx.get(s, {}).get("open")
+        out[s] = {"t": ts, "price": round(c[-1], 2), "prev": round(c[-2], 2), "day": round(c[-1] / c[-2] - 1, 4),
+                  "open": round(o, 2) if o else None, "sma20": round(i["sma20"], 2), "sma50": round(i["sma50"], 2),
+                  "sma200": round(sma(c, 200), 2) if len(c) >= 200 else None, "rsi": round(i["rsi"], 1),
+                  "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "spark": [round(x, 2) for x in c[-40:]]}
+    return out
+
 def step(state, closes, ctx, ts, news_fn=None, ai=None):
     """One run. closes {sym: [daily closes..., live]}, ctx {sym: {open, high, low}} for today's bar."""
     prices = state["prices"]
     for s, c in closes.items():
         prices[s] = round(c[-1], 4)
+    state.setdefault("market", {}).update(market_snapshot(closes, ctx, ts))
+    state["market_time"] = ts
     cache = {}
     def news(max_age_h):
         if "all" not in cache:
