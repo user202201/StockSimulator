@@ -11,6 +11,13 @@ python bot/run.py --demo        # 生成演示数据
 python -m http.server -d docs   # 浏览器打开 http://localhost:8000
 ```
 
+## AI 服务（交易员 C、D 需要）
+机器人按顺序尝试已配置的服务商：自定义 → Gemini → GitHub Models。**建议配置 Gemini 免费密钥**（GitHub Models 可能已下线）：
+1. 到 https://aistudio.google.com/apikey 创建免费 API Key
+2. 仓库 Settings → Secrets and variables → Actions → New repository secret，名称 `GEMINI_API_KEY`
+3. 可选：Variables 里设 `GEMINI_MODEL`（默认 `gemini-2.5-flash`）
+没有配置时 A、B 和对照账户照常运行，C、D 暂不交易，看板会提示。
+
 ## 上线
 1. 合并到默认分支（Actions 定时任务只在默认分支运行）
 2. Settings → Pages → Source 选 **GitHub Actions**

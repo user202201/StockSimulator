@@ -12,6 +12,7 @@ permissions:
   pages: write
   id-token: write
   actions: write
+  models: read
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -45,6 +46,14 @@ jobs:
         run: python bot/run.py
         env:
           STATE_PATH: databranch/state.json
+          # AI providers, tried in this order if configured: custom -> Gemini -> GitHub Models
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_MODEL: ${{ vars.GH_MODEL }}
 
       - name: Commit data to data branch
         id: commit

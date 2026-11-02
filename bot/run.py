@@ -1,84 +1,123 @@
 #!/usr/bin/env python3
-"""US-stock paper trading bot. Zero dependencies (stdlib only).
+"""US-stock paper trading experiment. Stdlib only.
 
-Accounts (all start with the same cash, see EXPERIMENT.md):
-  rule   - trend-following strategy
-  spy    - buy & hold SPY (benchmark)
-  equal  - buy & hold the whole universe, equal weight (benchmark, cancels survivorship bias)
-  random - random decisions at a similar trade frequency (control: is the strategy better than luck?)
+Seven accounts, same start ($5,000), same data, same fill/fee rules (see EXPERIMENT.md):
+  rule_long  A  rules, trend following, holds days-weeks
+  rule_short B  rules, intraday dip-buying, flat before the close
+  ai_long    C  AI + headlines, one review per day, swing holding
+  ai_short   D  AI + headlines, 4 reviews per day, intraday, flat before the close
+  spy / equal / random   controls
 
-Realism rules enforced by the engine:
-  * orders fill on the NEXT run (decision price != fill price), with slippage
-  * no same-day round trip (PDT-safe), long-only, no margin, fractional shares
-  * T+1 settlement: sale proceeds are usable the next trading day
-  * stock splits and dividends are applied to positions
-  * market session / holidays taken from Yahoo's trading-period metadata
-  * stale or anomalous quotes are skipped, never traded
+Realism enforced by the engine (never by the AI): fills on the NEXT run with slippage, regulatory sell fees,
+T+1 settlement (buys use settled cash only = cash-account model, no PDT), splits/dividends, market-session check,
+stale / anomalous quote protection, long-only, fractional shares.
 
-Usage:
-  python bot/run.py            # live
-  python bot/run.py --demo     # offline demo with synthetic prices
-  python bot/run.py --force    # live, ignore market-open check (for testing)
+  python bot/run.py          live      python bot/run.py --demo   offline demo with synthetic data
 """
 import json, math, os, random, sys, urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ai as aimod
+import news as newsmod
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_PATH = os.environ.get("STATE_PATH") or os.path.join(ROOT, "docs", "data", "state.json")
+STATE_VERSION = 3
+DEMO = False
 
 INITIAL_CASH = 5000.0
-UNIVERSE = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO"]
+CORE = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO"]
+AI_STOCKS = ["AMD", "PLTR", "TSM", "ORCL", "ARM", "MU", "MRVL", "SMCI", "SNOW", "NOW"]
+UNIVERSE = CORE + AI_STOCKS + ["PTC"]
+NAMES = {"SPY": "SPDR S&P 500 ETF", "QQQ": "Invesco QQQ", "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "Nvidia",
+         "AMZN": "Amazon", "GOOGL": "Alphabet Google", "META": "Meta Platforms", "TSLA": "Tesla", "AVGO": "Broadcom",
+         "AMD": "Advanced Micro Devices", "PLTR": "Palantir", "TSM": "Taiwan Semiconductor", "ORCL": "Oracle",
+         "ARM": "Arm Holdings", "MU": "Micron", "MRVL": "Marvell", "SMCI": "Super Micro Computer",
+         "SNOW": "Snowflake", "NOW": "ServiceNow", "PTC": "PTC Inc"}
 BENCH = "SPY"
-MAX_POSITIONS = 4
-TARGET_WEIGHT = 0.25      # of total equity per position
-HARD_STOP = 0.07
-TRAIL_STOP = 0.08
-SLIPPAGE = 0.0005         # per side (spread / execution drift for liquid large caps)
-# Fee schedule, US retail brokers, 2026 (verify yearly - see EXPERIMENT.md):
-COMMISSION = 0.0          # $ per trade; mainstream US brokers are commission-free
-SEC_FEE_PER_MILLION = 20.60   # SEC Section 31, sells only, $ per $1M sold (effective 2026-04-04)
-TAF_PER_SHARE = 0.000195      # FINRA TAF, sells only, $ per share
-TAF_MIN, TAF_MAX = 0.01, 9.79 # per trade
-RANDOM_SELL_PROB = 0.06   # daily, per held position
-RANDOM_BUY_PROB = 0.20    # daily, when a slot is free
-STALE_SECS = 1800         # quote older than this => skip symbol
-ANOMALY = 0.25            # >25% jump without a split => skip symbol
+
+SLIPPAGE = 0.0005
+COMMISSION = 0.0
+SEC_FEE_PER_MILLION = 20.60     # sells only, effective 2026-04-04
+TAF_PER_SHARE = 0.000195        # sells only
+TAF_MIN, TAF_MAX = 0.01, 9.79
+STALE_SECS, ANOMALY = 1800, 0.25
 NY = ZoneInfo("America/New_York")
 
+# rule_long (A)
+A_MAX_POS, A_WEIGHT, A_HARD_STOP, A_TRAIL = 4, 0.25, 0.07, 0.08
+# rule_short (B)
+B_MAX_POS, B_WEIGHT, B_DIP, B_TP, B_SL = 4, 0.20, 0.012, 0.010, 0.008
+INTRADAY_WINDOW = ((10, 0), (15, 0))     # new entries only inside this window
+FLATTEN_AT = (15, 30)                    # queue exits at 15:30 so the 15:45 run still fills them
+# random control
+RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.06, 0.20
+
+AI_PARAMS = {
+    "ai_long": {"horizon": "long", "max_pos": 5, "cap": 0.25, "stop": 0.10, "min_hold": 2, "max_buys": 2,
+                "rounds": [(10, 0)], "news_age": 36, "flatten": None, "no_new_after": None},
+    "ai_short": {"horizon": "short", "max_pos": 4, "cap": 0.20, "stop": 0.02, "min_hold": 0, "max_buys": 2,
+                 "rounds": [(10, 0), (11, 30), (13, 0), (14, 30)], "news_age": 8, "flatten": FLATTEN_AT, "no_new_after": (15, 0)},
+}
+
 ACCOUNTS = {
-    "rule": ("规则策略", "趋势跟随：站上50日均线且短期强于中期时买入，止损/回撤止盈/跌破均线时卖出。"),
-    "spy": ("SPY 买入持有", "基准：开局全仓买入 SPY 后不再操作。"),
-    "equal": ("股票池等权持有", "基准：开局把本金等分买入股票池全部标的后不再操作，用来抵消“所选股票本来就是强势股”的偏差。"),
-    "random": ("随机决策", "对照：买卖频率与规则策略相近，但标的和时机完全随机，用来检验策略是否真的优于运气。"),
+    "rule_long": dict(name="A 趋势规则", kind="rule_long", style="规则 · 中线趋势", freq="每 15 分钟检查，持有数天到数周",
+        desc="完全按预设条件买卖，没有 AI。顺势而为：股价站上 50 日均线、短期强于中期、动量为正时买入。",
+        rules=["买入：现价>50日均线，20日均线>50日均线，20日动量>0，RSI<75，且 SPY 在 200 日均线之上",
+               "最多同时持有 4 只，每只约占总资产 25%，按 60 日动量排序选股",
+               "卖出：亏损 7% 止损 / 从最高点回撤 8% / 跌破 50 日均线",
+               "同一天买入的股票当天不卖，卖出后当天不再买回"]),
+    "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 日内短线", freq="每 15 分钟检查，当天买当天卖",
+        desc="完全按预设条件做日内：趋势向上的股票盘中回调时低吸，涨一点就卖，收盘前清仓。没有 AI。",
+        rules=["买入：10:00–15:00 之间，上升趋势股票（现价>50日均线且20日均线>50日均线）较今日开盘价回落 ≥1.2%，且 SPY 当日跌幅没有超过 1.5%",
+               "最多同时持有 4 只，每只约占总资产 20%，每只股票每天最多交易一次",
+               "卖出：盈利 +1.0% 止盈 / 亏损 -0.8% 止损 / 15:30 起收盘前清仓"]),
+    "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:00），持有数天到数周",
+        desc="每天开盘半小时后，AI 读取 21 只股票的行情指标和最新新闻标题，自己判断买什么、卖什么、仓位多少。",
+        rules=["AI 自主决策，但必须引用新闻编号，代码会核对编号真实存在",
+               "代码强制：最多 5 只，单只不超过 25%，每轮最多买 2 只，买入后至少持有 2 天，亏损 10% 强制止损",
+               "不确定时可以什么都不做"]),
+    "ai_short": dict(name="D AI 短线", kind="ai_short", style="AI + 新闻 · 日内", freq="每天 4 次（美东 10:00 / 11:30 / 13:00 / 14:30），当天清仓",
+        desc="一天内多次复盘，AI 结合当天走势和新闻做日内交易，收盘前由代码强制清仓。",
+        rules=["AI 自主决策，必须引用新闻编号",
+               "代码强制：最多 4 只，单只不超过 20%，每轮最多买 2 只，亏损 2% 强制止损，15:00 后不开新仓，15:30 起全部清仓"]),
+    "spy": dict(name="SPY 买入持有", kind="spy", style="对照 · 基准", freq="只在开局买入一次",
+        desc="基准：开局全仓买入 SPY 后不再操作。", rules=[]),
+    "equal": dict(name="股票池等权持有", kind="equal", style="对照 · 基准", freq="只在开局买入一次",
+        desc="基准：开局把本金等分买入全部 21 只股票后不再操作，用来抵消“所选股票本来就是强势股”的偏差。", rules=[]),
+    "random": dict(name="随机决策", kind="random", style="对照 · 随机", freq="每天抽签一次",
+        desc="对照：买卖完全随机，用来检验各交易员是否真的优于运气。", rules=["每个持仓每天 6% 概率卖出；有空位时每天 20% 概率随机买入一只"]),
 }
 
 
+# ---------- helpers ----------
 def cent_up(x):
     return math.ceil(round(x * 100, 6)) / 100
 
 def sell_fees(shares, gross):
-    """Regulatory fees charged on sales (passed through by most brokers) + commission."""
     sec = max(cent_up(gross * SEC_FEE_PER_MILLION / 1e6), 0.01)
     taf = min(max(cent_up(shares * TAF_PER_SHARE), TAF_MIN), TAF_MAX)
     return round(COMMISSION + sec + taf, 2)
 
-
-# ---------- time helpers ----------
 def parse_ts(ts):
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 def et_date(ts):
     return parse_ts(ts).astimezone(NY).date().isoformat()
 
+def et_hm(ts):
+    d = parse_ts(ts).astimezone(NY)
+    return (d.hour, d.minute)
+
 def next_trading_day(d):
     x = datetime.fromisoformat(d) + timedelta(days=1)
     while x.weekday() >= 5:
         x += timedelta(days=1)
-    return x.date().isoformat()   # holidays ignored: at worst funds free up a day early
+    return x.date().isoformat()
 
-
-# ---------- indicators ----------
 def sma(xs, n):
     return sum(xs[-n:]) / n if len(xs) >= n else None
 
@@ -97,8 +136,11 @@ def snap(c):
             "mom20": f(c[-1] / c[-21] - 1) if len(c) > 20 else None,
             "mom60": f(c[-1] / c[-61] - 1) if len(c) > 60 else None}
 
+def uptrend(c):
+    return len(c) >= 51 and c[-1] > sma(c, 50) and sma(c, 20) > sma(c, 50)
 
-# ---------- rule strategy ----------
+
+# ---------- rule A ----------
 def market_regime_ok(closes):
     ma = sma(closes[BENCH], 200)
     return ma is not None and closes[BENCH][-1] > ma
@@ -126,23 +168,25 @@ def entry_checks(c, spy, score, rank, slots):
 def exit_check(pos, c):
     p = c[-1]
     pos["peak"] = max(pos["peak"], p)
-    hard, trail, s50 = pos["avg_cost"] * (1 - HARD_STOP), pos["peak"] * (1 - TRAIL_STOP), sma(c, 50)
+    hard, trail, s50 = pos["avg_cost"] * (1 - A_HARD_STOP), pos["peak"] * (1 - A_TRAIL), sma(c, 50)
     rules = [("硬止损 -7%", p <= hard, f"现价 ${p:.2f} {'≤' if p <= hard else '>'} 硬止损线 ${hard:.2f}（成本 ${pos['avg_cost']:.2f} 的 -7%）"),
              ("回撤止盈 -8%", p <= trail, f"现价 ${p:.2f} {'≤' if p <= trail else '>'} 回撤线 ${trail:.2f}（持仓最高 ${pos['peak']:.2f} 的 -8%）"),
              ("跌破50日均线", p < s50, f"现价 ${p:.2f} {'<' if p < s50 else '≥'} 50日均线 ${s50:.2f}")]
-    reason = next((n for n, hit, _ in rules if hit), None)
-    return reason, [{"text": txt, "ok": hit} for _, hit, txt in rules]
+    return next((n for n, hit, _ in rules if hit), None), [{"text": t, "ok": h} for _, h, t in rules]
 
 
-# ---------- account engine ----------
-def new_account(name, desc):
-    return {"name": name, "desc": desc, "cash": INITIAL_CASH, "unsettled": [], "positions": {},
-            "pending": [], "trades": [], "equity": [], "events": [], "last_decision": None, "fees_paid": 0.0}
+# ---------- accounts / engine ----------
+def new_account(aid):
+    c = ACCOUNTS[aid]
+    return {"name": c["name"], "kind": c["kind"], "style": c["style"], "freq": c["freq"], "desc": c["desc"], "rules": c["rules"],
+            "cash": INITIAL_CASH, "unsettled": [], "positions": {}, "pending": [], "trades": [], "equity": [],
+            "events": [], "last_decision": None, "fees_paid": 0.0,
+            "ai": {"done": [], "attempts": {}, "rounds": [], "last_error": None}}
 
 def new_state():
-    return {"initial_cash": INITIAL_CASH, "accounts": {k: new_account(*v) for k, v in ACCOUNTS.items()},
-            "prices": {}, "events_seen": {}, "updated": None, "demo": False,
-            "health": {"last_ok": None, "last_attempt": None, "last_error": None, "fail_count": 0}}
+    return {"version": STATE_VERSION, "initial_cash": INITIAL_CASH, "universe": UNIVERSE,
+            "accounts": {k: new_account(k) for k in ACCOUNTS}, "prices": {}, "events_seen": {}, "updated": None,
+            "demo": False, "health": {"last_ok": None, "last_attempt": None, "last_error": None, "fail_count": 0, "ai": {}}}
 
 def equity_of(acct, prices):
     return (acct["cash"] + sum(u["amount"] for u in acct["unsettled"]) +
@@ -162,10 +206,8 @@ def queue(acct, side, sym, ts, price, reason, detail, dollars=None):
                             "decided_at": ts, "decision_price": round(price, 2), "detail": detail})
 
 def exec_buy(acct, o, price, ts):
-    sym = o["symbol"]
-    px = price * (1 + SLIPPAGE)
-    dollars = min(o["dollars"], acct["cash"])
-    shares = math.floor(dollars / px * 10000) / 10000
+    sym, px = o["symbol"], price * (1 + SLIPPAGE)
+    shares = math.floor(min(o["dollars"], acct["cash"]) / px * 10000) / 10000
     if shares <= 0 or sym in acct["positions"]:
         return
     before = acct["cash"]
@@ -207,19 +249,23 @@ def fill_pending(acct, prices, fresh, ts):
             exec_sell(acct, o, prices[sym], ts)
     acct["pending"] = keep
 
-
-# ---------- decision functions (queue orders; they fill on the next run) ----------
-def committed_dollars(acct):
+def committed(acct):
     return sum(o["dollars"] for o in acct["pending"] if o["side"] == "BUY")
 
-def decide_rule(acct, closes, ts, prices):
+def traded_today(acct, today):
+    return {t["symbol"] for t in acct["trades"] if et_date(t["time"]) == today} | {o["symbol"] for o in acct["pending"]}
+
+
+# ---------- decision functions ----------
+def decide_rule_long(acct, env):
+    closes, ts, prices = env["closes"], env["ts"], env["prices"]
     today = et_date(ts)
     pend = {o["symbol"] for o in acct["pending"]}
     for sym, pos in list(acct["positions"].items()):
         if sym not in closes:
             continue
         r, checks = exit_check(pos, closes[sym])
-        if r and sym not in pend and et_date(pos["entry"]) != today:      # no same-day round trip
+        if r and sym not in pend and et_date(pos["entry"]) != today:
             queue(acct, "SELL", sym, ts, closes[sym][-1], r, {"checks": checks, "ind": snap(closes[sym])})
     if BENCH not in closes or not market_regime_ok(closes):
         return
@@ -230,16 +276,60 @@ def decide_rule(acct, closes, ts, prices):
                     and entry_score(closes[s]) is not None], reverse=True)
     n = len(acct["positions"]) + len(pend_buys)
     for rank, (score, sym) in enumerate(cands, 1):
-        if n >= MAX_POSITIONS:
+        if n >= A_MAX_POS:
             break
         eq = equity_of(acct, prices)
-        dollars = min(eq * TARGET_WEIGHT, acct["cash"] - committed_dollars(acct))
+        dollars = min(eq * A_WEIGHT, acct["cash"] - committed(acct))
         if dollars < 50:
             break
-        chk = entry_checks(closes[sym], closes[BENCH], score, rank, MAX_POSITIONS - n)
         queue(acct, "BUY", sym, ts, closes[sym][-1], f"上升趋势，60日动量 {score:+.1%}",
-              {"checks": chk, "ind": snap(closes[sym]), "equity": round(eq, 2), "weight": round(dollars / eq, 3)},
-              dollars=dollars)
+              {"checks": entry_checks(closes[sym], closes[BENCH], score, rank, A_MAX_POS - n), "ind": snap(closes[sym]),
+               "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
+        n += 1
+
+def decide_rule_short(acct, env):
+    closes, ctx, ts, prices = env["closes"], env["ctx"], env["ts"], env["prices"]
+    today, hm = et_date(ts), et_hm(ts)
+    pend = {o["symbol"] for o in acct["pending"]}
+    for sym, pos in list(acct["positions"].items()):
+        if sym not in closes or sym in pend:
+            continue
+        p = closes[sym][-1]
+        pos["peak"] = max(pos["peak"], p)
+        gain = p / pos["avg_cost"] - 1
+        reason = ("止盈 +1.0%" if gain >= B_TP else "止损 -0.8%" if gain <= -B_SL else
+                  "收盘前清仓" if hm >= FLATTEN_AT else None)
+        if reason:
+            checks = [{"text": f"相对成本 ${pos['avg_cost']:.2f} 的涨跌 {gain:+.2%}（止盈 +{B_TP:.1%} / 止损 -{B_SL:.1%}）", "ok": abs(gain) >= min(B_TP, B_SL)},
+                      {"text": f"美东 {hm[0]:02d}:{hm[1]:02d}（{FLATTEN_AT[0]}:{FLATTEN_AT[1]} 起收盘前清仓）", "ok": hm >= FLATTEN_AT}]
+            queue(acct, "SELL", sym, ts, p, reason, {"checks": checks, "ind": snap(closes[sym])})
+    if not (INTRADAY_WINDOW[0] <= hm < INTRADAY_WINDOW[1]) or BENCH not in closes or BENCH not in ctx:
+        return
+    spy_chg = closes[BENCH][-1] / ctx[BENCH]["open"] - 1
+    if spy_chg <= -0.015:
+        return
+    skip = set(acct["positions"]) | traded_today(acct, today)
+    cands = []
+    for s in UNIVERSE:
+        if s in closes and s in ctx and s not in skip and uptrend(closes[s]):
+            dip = closes[s][-1] / ctx[s]["open"] - 1
+            if dip <= -B_DIP:
+                cands.append((closes[s][-1] / closes[s][-61] - 1 if len(closes[s]) > 60 else 0, dip, s))
+    n = len(acct["positions"]) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
+    for mom, dip, sym in sorted(cands, reverse=True):
+        if n >= B_MAX_POS:
+            break
+        eq = equity_of(acct, prices)
+        dollars = min(eq * B_WEIGHT, acct["cash"] - committed(acct))
+        if dollars < 50:
+            break
+        c = closes[sym]
+        checks = [{"text": f"较今日开盘价 ${ctx[sym]['open']:.2f} 回落 {dip:+.2%}（需 ≤ -{B_DIP:.1%}）", "ok": True},
+                  {"text": f"上升趋势：现价>50日均线 ${sma(c, 50):.2f} 且 20日均线 ${sma(c, 20):.2f} > 50日均线", "ok": True},
+                  {"text": f"大盘 SPY 今日 {spy_chg:+.2%}（需 > -1.5%）", "ok": True},
+                  {"text": f"美东 {hm[0]:02d}:{hm[1]:02d}，在 10:00–15:00 开仓窗口内", "ok": True}]
+        queue(acct, "BUY", sym, ts, c[-1], f"上升趋势中日内回调 {dip:+.1%}，低吸",
+              {"checks": checks, "ind": snap(c), "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
         n += 1
 
 def _hold_forever(acct, closes, ts, syms):
@@ -251,18 +341,19 @@ def _hold_forever(acct, closes, ts, syms):
               {"checks": [{"text": f"开局按 1/{len(syms)} 等权买入，之后不再操作", "ok": True}], "ind": snap(closes[s]),
                "equity": INITIAL_CASH, "weight": round(1 / len(syms), 3)}, dollars=each)
 
-def decide_spy(acct, closes, ts, prices):
-    _hold_forever(acct, closes, ts, [BENCH])
+def decide_spy(acct, env):
+    _hold_forever(acct, env["closes"], env["ts"], [BENCH])
 
-def decide_equal(acct, closes, ts, prices):
-    _hold_forever(acct, closes, ts, UNIVERSE)
+def decide_equal(acct, env):
+    _hold_forever(acct, env["closes"], env["ts"], UNIVERSE)
 
-def decide_random(acct, closes, ts, prices):
+def decide_random(acct, env):
+    closes, ts, prices = env["closes"], env["ts"], env["prices"]
     today = et_date(ts)
     if acct["last_decision"] == today:
         return
     acct["last_decision"] = today
-    rnd = random.Random(f"seed42-{today}")       # reproducible
+    rnd = random.Random(f"seed42-{today}")
     pend = {o["symbol"] for o in acct["pending"]}
     for sym in sorted(acct["positions"]):
         x = rnd.random()
@@ -271,22 +362,178 @@ def decide_random(acct, closes, ts, prices):
                   {"checks": [{"text": f"随机数 {x:.2f} < {RANDOM_SELL_PROB}（每个持仓每天 6% 概率卖出）", "ok": True}], "ind": snap(closes[sym])})
     n = len(acct["positions"]) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
     x = rnd.random()
-    if n < MAX_POSITIONS and x < RANDOM_BUY_PROB:
+    if n < A_MAX_POS and x < RANDOM_BUY_PROB:
         pool = sorted(s for s in UNIVERSE if s in closes and s not in acct["positions"] and s not in pend)
         if pool:
             sym = rnd.choice(pool)
             eq = equity_of(acct, prices)
-            dollars = min(eq * TARGET_WEIGHT, acct["cash"] - committed_dollars(acct))
+            dollars = min(eq * A_WEIGHT, acct["cash"] - committed(acct))
             if dollars >= 50:
                 queue(acct, "BUY", sym, ts, closes[sym][-1], "随机抽签买入",
                       {"checks": [{"text": f"随机数 {x:.2f} < {RANDOM_BUY_PROB}（有空位时每天 20% 概率买入，标的随机选）", "ok": True}],
                        "ind": snap(closes[sym]), "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
 
-DECIDE = {"rule": decide_rule, "spy": decide_spy, "equal": decide_equal, "random": decide_random}
+
+# ---------- AI traders ----------
+def market_rows(closes, ctx):
+    rows = []
+    for s in UNIVERSE:
+        c = closes.get(s)
+        if not c or len(c) < 61:
+            continue
+        i = snap(c)
+        o = ctx.get(s, {}).get("open")
+        rows.append({"symbol": s, "price": c[-1], "vs_open": (c[-1] / o - 1) if o else None,
+                     "vs_sma20": c[-1] / i["sma20"] - 1, "vs_sma50": c[-1] / i["sma50"] - 1,
+                     "rsi": i["rsi"], "mom20": i["mom20"], "mom60": i["mom60"]})
+    return rows
+
+def log_decision(rec):
+    if DEMO:
+        return
+    d = os.path.join(os.path.dirname(STATE_PATH), "decisions")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, rec["time"][:10] + ".jsonl"), "a") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+def decide_ai(acct, env, p):
+    closes, ctx, ts, prices = env["closes"], env["ctx"], env["ts"], env["prices"]
+    today, hm = et_date(ts), et_hm(ts)
+    pos_map = acct["positions"]
+    pend = {o["symbol"] for o in acct["pending"]}
+    # 1) risk exits enforced by code, independent of the AI
+    for sym, pos in list(pos_map.items()):
+        if sym not in closes or sym in pend:
+            continue
+        px = closes[sym][-1]
+        pos["peak"] = max(pos["peak"], px)
+        reason = None
+        if px <= pos["avg_cost"] * (1 - p["stop"]):
+            reason = f"代码风控：触及止损 -{p['stop']:.0%}"
+        elif p["flatten"] and hm >= p["flatten"]:
+            reason = "代码风控：日内交易，收盘前清仓"
+        if reason:
+            queue(acct, "SELL", sym, ts, px, reason,
+                  {"checks": [{"text": f"现价 ${px:.2f}，成本 ${pos['avg_cost']:.2f}（{px / pos['avg_cost'] - 1:+.2%}）；这是代码强制的风控，不经过 AI", "ok": True}],
+                   "ind": snap(closes[sym])})
+    # 2) the AI review round
+    st = acct["ai"]
+    st["done"] = [k for k in st["done"] if k.startswith(today)]
+    st["attempts"] = {k: v for k, v in st["attempts"].items() if k.startswith(today)}
+    due = [r for r in p["rounds"] if hm >= r]
+    if not due or env["ai"] is None or (p["flatten"] and hm >= p["flatten"]):
+        return
+    rt = max(due)
+    key = f"{today}@{rt[0]:02d}:{rt[1]:02d}"
+    if key in st["done"] or st["attempts"].get(key, 0) >= 2:
+        return
+    news = env["news"](p["news_age"])
+    pend = {o["symbol"] for o in acct["pending"]}
+    eq = equity_of(acct, prices)
+    positions = [{"symbol": s, "shares": round(x["shares"], 4), "avg_cost": x["avg_cost"], "price": prices.get(s, x["avg_cost"]),
+                  "pnl_pct": prices.get(s, x["avg_cost"]) / x["avg_cost"] - 1,
+                  "held_days": (datetime.fromisoformat(today) - datetime.fromisoformat(et_date(x["entry"]))).days}
+                 for s, x in pos_map.items()]
+    rules = ["long-only, fractional shares", f"min {p['min_hold']} day hold before selling" if p["min_hold"] else "same-day exits allowed",
+             f"max {p['max_buys']} new buys per review", f"code force-sells at -{p['stop']:.0%} loss"]
+    if p["flatten"]:
+        rules.append("all positions force-closed at 15:30 ET; no new buys after 15:00 ET")
+    payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq,
+               "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
+               "rules": rules, "positions": positions, "market": market_rows(closes, ctx), "news": news}
+    messages = aimod.build_messages(payload)
+    st["attempts"][key] = st["attempts"].get(key, 0) + 1
+    h = env["health_ai"]
+    try:
+        raw, meta = env["ai"].decide(messages, payload)
+        data = aimod.extract_json(raw)
+    except Exception as e:
+        st["last_error"] = f"{ts[:16]} {str(e)[:200]}"
+        h["last_error"] = st["last_error"]
+        log_decision({"time": ts, "account": acct["name"], "round": key, "error": str(e)[:500], "prompt": messages[1]["content"]})
+        return
+    h["last_ok"], h["last_error"], st["last_error"] = ts, None, None
+    nid = {n["id"]: n for n in news}
+    avail = max(acct["cash"] - committed(acct), 0)
+    n_pos = len(pos_map) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
+    buys, summary, round_decs, norders = 0, str(data.get("summary", ""))[:160], [], 0
+    for d in (data.get("decisions") or [])[:30]:
+        sym, act = str(d.get("symbol", "")).upper(), str(d.get("action", "")).upper()
+        reason = str(d.get("reason", ""))[:200]
+        e = {"symbol": sym, "action": act, "reason": reason, "applied": False, "note": ""}
+        round_decs.append(e)
+        if sym not in UNIVERSE or sym not in closes or act not in ("BUY", "SELL", "HOLD"):
+            e["note"] = "无效标的或动作，已忽略"; continue
+        if act == "HOLD":
+            continue
+        try:
+            conf = max(0.0, min(1.0, float(d.get("confidence", 0.5))))
+        except Exception:
+            conf = 0.5
+        cited = [nid[i] for i in (d.get("headline_ids") or []) if i in nid]
+        bad_ids = [i for i in (d.get("headline_ids") or []) if i not in nid]
+        ai_info = {"provider": meta["provider"], "model": meta["model"], "confidence": conf, "summary": summary, "round": key,
+                   "unverified_ids": bad_ids}
+        news_info = [{"id": n["id"], "sym": n["sym"], "title": n["title"], "src": n["src"], "age_h": round(n["age_h"], 1)} for n in cited]
+        px = closes[sym][-1]
+        if act == "BUY":
+            if sym in pos_map or sym in pend:
+                e["note"] = "已持有或已有挂单"
+            elif n_pos >= p["max_pos"]:
+                e["note"] = f"持仓数已满（{p['max_pos']}）"
+            elif buys >= p["max_buys"]:
+                e["note"] = "本轮买入次数已达上限"
+            elif p["no_new_after"] and hm >= p["no_new_after"]:
+                e["note"] = "已过开仓截止时间"
+            elif sym in traded_today(acct, today) and p["horizon"] == "short":
+                e["note"] = "今日已交易过该标的"
+            else:
+                try:
+                    w = min(max(float(d.get("weight", p["cap"])), 0.05), p["cap"])
+                except Exception:
+                    w = p["cap"]
+                dollars = min(eq * w, avail)
+                if dollars < 50:
+                    e["note"] = "可用现金不足"
+                else:
+                    chk = [{"text": f"AI 理由：{reason}（信心 {conf:.0%}）", "ok": True},
+                           {"text": f"代码校验通过：仓位 {dollars / eq:.0%} ≤ 上限 {p['cap']:.0%}；持仓数 {n_pos + 1}/{p['max_pos']}；用可用现金 ${dollars:.0f}", "ok": True}]
+                    if bad_ids:
+                        chk.append({"text": f"AI 引用的新闻编号 {bad_ids} 不存在，已忽略这些引用", "ok": False})
+                    queue(acct, "BUY", sym, ts, px, f"AI 买入：{reason}",
+                          {"checks": chk, "ind": snap(closes[sym]), "ai": ai_info, "news": news_info,
+                           "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
+                    avail -= dollars; n_pos += 1; buys += 1; norders += 1; e["applied"] = True
+        else:
+            x = pos_map.get(sym)
+            held = (datetime.fromisoformat(today) - datetime.fromisoformat(et_date(x["entry"]))).days if x else 0
+            if not x or sym in pend:
+                e["note"] = "未持有或已有挂单"
+            elif held < p["min_hold"]:
+                e["note"] = f"持有不足 {p['min_hold']} 天，代码拒绝"
+            else:
+                chk = [{"text": f"AI 理由：{reason}（信心 {conf:.0%}）", "ok": True},
+                       {"text": f"代码校验通过：持有 {held} 天，满足最短持有期 {p['min_hold']} 天", "ok": True}]
+                if bad_ids:
+                    chk.append({"text": f"AI 引用的新闻编号 {bad_ids} 不存在，已忽略这些引用", "ok": False})
+                queue(acct, "SELL", sym, ts, px, f"AI 卖出：{reason}",
+                      {"checks": chk, "ind": snap(closes[sym]), "ai": ai_info, "news": news_info})
+                norders += 1; e["applied"] = True
+    st["done"].append(key)
+    st["rounds"].append({"time": ts, "round": key, "provider": meta["provider"], "model": meta["model"], "summary": summary,
+                         "decisions": round_decs, "orders": norders, "news_count": len(news)})
+    st["rounds"] = st["rounds"][-40:]
+    log_decision({"time": ts, "account": acct["name"], "round": key, "provider": meta["provider"], "model": meta["model"],
+                  "fallback_errors": meta.get("fallback_errors"), "prompt": messages[1]["content"], "raw_response": raw,
+                  "decisions": round_decs, "headlines": [{k: n[k] for k in ("id", "sym", "title", "src")} for n in news]})
+
+KIND = {"rule_long": decide_rule_long, "rule_short": decide_rule_short, "spy": decide_spy,
+        "equal": decide_equal, "random": decide_random,
+        "ai_long": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_long"]),
+        "ai_short": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_short"])}
 
 
 def compact_equity(acct, now_ts, keep_days=7):
-    """Keep full resolution for the last 7 days; older history is reduced to one point per day."""
     cutoff = (parse_ts(now_ts) - timedelta(days=keep_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     eq = acct["equity"]
     if not eq or eq[0]["time"] >= cutoff:
@@ -297,15 +544,25 @@ def compact_equity(acct, now_ts, keep_days=7):
             daily[et_date(e["time"])] = e
     acct["equity"] = list(daily.values()) + [e for e in eq if e["time"] >= cutoff]
 
-def step(state, closes, ts):
-    """One run. closes: {sym: [daily closes..., live price]} for symbols with fresh, sane quotes."""
+def step(state, closes, ctx, ts, news_fn=None, ai=None):
+    """One run. closes {sym: [daily closes..., live]}, ctx {sym: {open, high, low}} for today's bar."""
     prices = state["prices"]
     for s, c in closes.items():
         prices[s] = round(c[-1], 4)
+    cache = {}
+    def news(max_age_h):
+        if "all" not in cache:
+            cache["all"] = news_fn() if news_fn else []
+        now = parse_ts(ts).timestamp()
+        items = [n for n in cache["all"] if n["sym"] in UNIVERSE and (now - n["ts"]) / 3600 <= max_age_h][:50]
+        return [{"id": f"N{i + 1}", "sym": n["sym"], "title": n["title"], "src": n["src"], "age_h": (now - n["ts"]) / 3600}
+                for i, n in enumerate(items)]
+    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai,
+           "health_ai": state["health"].setdefault("ai", {})}
     for aid, acct in state["accounts"].items():
         settle(acct, ts)
         fill_pending(acct, prices, set(closes), ts)
-        DECIDE[aid](acct, closes, ts, prices)
+        KIND[acct["kind"]](acct, env)
         acct["equity"].append({"time": ts, "equity": round(equity_of(acct, prices), 2)})
         compact_equity(acct, ts)
     state["updated"] = ts
@@ -313,7 +570,6 @@ def step(state, closes, ts):
 
 # ---------- corporate actions ----------
 def apply_events(state, evmap, now):
-    """evmap: {sym: (splits[(ts, ratio)], dividends[(ts, amount)])}. Applies only events after the position was opened."""
     for sym, (splits, divs) in evmap.items():
         seen = state["events_seen"].get(sym)
         if seen is None:
@@ -343,33 +599,33 @@ def fetch(sym):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=20) as r:
         res = json.load(r)["chart"]["result"][0]
-    closes = [x for x in res["indicators"]["quote"][0]["close"] if x is not None]
+    q = res["indicators"]["quote"][0]
+    closes = [x for x in q["close"] if x is not None]
     meta, ev = res["meta"], res.get("events") or {}
-    live, rt = meta.get("regularMarketPrice"), meta.get("regularMarketTime")
+    live, rt, day = meta.get("regularMarketPrice"), meta.get("regularMarketTime"), None
     if live and rt:
-        same_day = (datetime.fromtimestamp(rt, NY).date() == datetime.fromtimestamp(res["timestamp"][-1], NY).date())
+        same_day = datetime.fromtimestamp(rt, NY).date() == datetime.fromtimestamp(res["timestamp"][-1], NY).date()
         if same_day:
             closes[-1] = live
+            o, hi, lo = q["open"][-1], q["high"][-1], q["low"][-1]
+            if o:
+                day = {"open": o, "high": max(hi or o, live), "low": min(lo or o, live)}
         else:
             closes.append(live)
-    return {"closes": closes, "meta": meta,
+    return {"closes": closes, "meta": meta, "day": day,
             "splits": [(int(v["date"]), v["numerator"] / v["denominator"]) for v in (ev.get("splits") or {}).values()],
             "divs": [(int(v["date"]), v["amount"]) for v in (ev.get("dividends") or {}).values()]}
 
 def session_open(meta, now):
-    """Open = inside Yahoo's regular trading period for today AND the quote is fresh (handles holidays/early close/halts)."""
     cp = (meta.get("currentTradingPeriod") or {}).get("regular")
     rt = meta.get("regularMarketTime")
-    if not cp or not rt:
-        return False
-    return cp["start"] <= now < cp["end"] and now - rt <= STALE_SECS
+    return bool(cp and rt and cp["start"] <= now < cp["end"] and now - rt <= STALE_SECS)
 
 def sane(sym, d, now):
     c, meta = d["closes"], d["meta"]
     if len(c) < 2 or now - (meta.get("regularMarketTime") or 0) > STALE_SECS:
         return f"{sym}: stale quote"
-    recent_split = any(t > now - 5 * 86400 for t, _ in d["splits"])
-    if abs(c[-1] / c[-2] - 1) > ANOMALY and not recent_split:
+    if abs(c[-1] / c[-2] - 1) > ANOMALY and not any(t > now - 5 * 86400 for t, _ in d["splits"]):
         return f"{sym}: anomalous jump {c[-1] / c[-2] - 1:+.0%}, skipped"
     return None
 
@@ -388,7 +644,7 @@ def run_live():
     now = datetime.now(timezone.utc)
     ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     state = load_state()
-    if state.get("demo") or "accounts" not in state:       # discard demo / old-format data
+    if state.get("demo") or state.get("version") != STATE_VERSION:    # new experiment version => start clean
         state = new_state()
     h = state["health"]
     try:
@@ -396,21 +652,31 @@ def run_live():
         if not session_open(spy["meta"], now.timestamp()) and "--force" not in sys.argv:
             print("US market closed or quote stale; nothing to do."); return
         h["last_attempt"] = ts
-        data, closes, evmap, notes = {BENCH: spy}, {}, {}, []
-        for s in UNIVERSE:
+        def f(s):
             try:
-                data[s] = data.get(s) or fetch(s)
+                return s, (spy if s == BENCH else fetch(s)), None
             except Exception as e:
-                notes.append(f"{s}: fetch failed ({e})")
-        for s, d in data.items():
+                return s, None, str(e)
+        with ThreadPoolExecutor(6) as ex:
+            got = list(ex.map(f, UNIVERSE))
+        closes, ctx, evmap, notes = {}, {}, {}, []
+        for s, d, err in got:
+            if err:
+                notes.append(f"{s}: fetch failed ({err[:60]})"); continue
             bad = sane(s, d, now.timestamp()) if "--force" not in sys.argv else None
             if bad:
                 notes.append(bad); continue
-            closes[s] = d["closes"]; evmap[s] = (d["splits"], d["divs"])
+            closes[s], evmap[s] = d["closes"], (d["splits"], d["divs"])
+            if d["day"]:
+                ctx[s] = d["day"]
         if BENCH not in closes:
             raise RuntimeError("benchmark quote unusable: " + "; ".join(notes))
+        client = aimod.Client()
+        h["ai"]["configured"] = client.names()
+        if not client.providers:
+            h["ai"]["last_error"] = "未配置任何 AI 服务（缺少 GEMINI_API_KEY，且 GitHub Models 不可用），C/D 账户暂不交易"
         apply_events(state, evmap, now.timestamp())
-        step(state, closes, ts)
+        step(state, closes, ctx, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), client if client.providers else None)
         h.update(last_ok=ts, last_error="; ".join(notes) or None, fail_count=0)
         print("ok", {k: a["equity"][-1]["equity"] for k, a in state["accounts"].items()}, notes)
     except Exception as e:
@@ -422,28 +688,55 @@ def run_live():
 
 
 # ---------- offline demo ----------
-def run_demo(days=120):
+TEMPLATES = ["{n} announces new AI partnership", "Analyst raises {n} price target", "{n} shares slip on valuation worries",
+             "{n} wins major cloud contract", "Report: {n} supply constraints ease", "{n} faces new regulatory scrutiny"]
+
+def run_demo(days=40):
+    global DEMO
+    DEMO = True
     rnd = random.Random(7)
-    n = 300 + days
-    series = {}
+    params = {s: (rnd.uniform(0.0002, 0.0012), rnd.uniform(0.01, 0.025), 100 * rnd.uniform(0.5, 3)) for s in UNIVERSE}
+    hist = {}
     for s in UNIVERSE:
-        drift, vol = rnd.uniform(0.0002, 0.0012), rnd.uniform(0.01, 0.025)
-        p, xs = 100 * rnd.uniform(0.5, 3), []
-        for _ in range(n):
-            p *= math.exp(drift + vol * rnd.gauss(0, 1)); xs.append(p)
-        series[s] = xs
+        drift, vol, p = params[s]
+        hist[s] = []
+        for _ in range(300):
+            p *= math.exp(drift + vol * rnd.gauss(0, 1)); hist[s].append(p)
+    dates, d = [], datetime(2026, 10, 30)
+    while len(dates) < days:
+        if d.weekday() < 5:
+            dates.append(d)
+        d -= timedelta(days=1)
+    dates.reverse()
     state = new_state(); state["demo"] = True
-    d, i = datetime(2026, 11, 2, tzinfo=timezone.utc) - timedelta(days=int(days * 1.45)), 300
-    while i < n:
-        d += timedelta(days=1)
-        if d.weekday() >= 5:
-            continue
-        step(state, {s: series[s][:i + 1] for s in UNIVERSE}, d.strftime("%Y-%m-%dT20:00:00Z"))
-        i += 1
+    client = aimod.MockClient()
+    N = 26
+    for day in dates:
+        paths = {}
+        for s in UNIVERSE:
+            drift, vol, _ = params[s]
+            p0 = hist[s][-1]
+            p1 = p0 * math.exp(drift + vol * rnd.gauss(0, 1))
+            noise = [0.0]
+            for _ in range(N):
+                noise.append(noise[-1] + rnd.gauss(0, vol / math.sqrt(N)))
+            paths[s] = [p0 * math.exp(math.log(p1 / p0) * i / N + noise[i] - noise[N] * i / N) for i in range(N + 1)]
+        for k in range(1, N):
+            t = (datetime(day.year, day.month, day.day, 9, 30, tzinfo=NY) + timedelta(minutes=15 * k)).astimezone(timezone.utc)
+            ts = t.strftime("%Y-%m-%dT%H:%M:%SZ")
+            closes = {s: hist[s] + [paths[s][k]] for s in UNIVERSE}
+            ctx = {s: {"open": paths[s][0], "high": max(paths[s][:k + 1]), "low": min(paths[s][:k + 1])} for s in UNIVERSE}
+            def fake_news(t=t):
+                r = random.Random(ts)
+                return [{"sym": s, "title": r.choice(TEMPLATES).format(n=NAMES[s]), "src": "Demo Wire",
+                         "ts": t.timestamp() - r.uniform(0, 6) * 3600} for s in UNIVERSE if r.random() < 0.5]
+            step(state, closes, ctx, ts, fake_news, client)
+        for s in UNIVERSE:
+            hist[s].append(paths[s][N])
     state["health"].update(last_ok=state["updated"], last_attempt=state["updated"])
     save_state(state)
     for k, a in state["accounts"].items():
-        print(f"demo {k}: equity={a['equity'][-1]['equity']} trades={len(a['trades'])}")
+        print(f"demo {k}: equity={a['equity'][-1]['equity']} trades={len(a['trades'])} fees={a['fees_paid']}")
 
 if __name__ == "__main__":
     run_demo() if "--demo" in sys.argv else run_live()
