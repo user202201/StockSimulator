@@ -689,6 +689,9 @@ def run_live():
         h["ai"]["configured"] = client.names()
         if not client.providers:
             h["ai"]["last_error"] = "未配置任何 AI 服务（缺少 GEMINI_API_KEY，且 GitHub Models 不可用），C/D 账户暂不交易"
+        if os.environ.get("RETRY_AI"):          # manual runs: give each AI round fresh attempts (for debugging / verification)
+            for a in state["accounts"].values():
+                a["ai"]["attempts"] = {}
         apply_events(state, evmap, now.timestamp())
         step(state, closes, ctx, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), client if client.providers else None)
         h["ai"]["configured"] = client.names()
