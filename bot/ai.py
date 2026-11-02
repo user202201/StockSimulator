@@ -47,20 +47,60 @@ class Client:
         for p in self.providers:
             t0 = time.time()
             try:
-                try:
-                    txt = self._call(p, messages)
-                except ApiError as e:
-                    if p["name"] == "gemini" and not p.get("explicit") and e.code in (400, 404):
-                        m = self._discover(p)            # configured model is gone: find a usable Flash model
-                        p["model"] = m
-                        txt = self._call(p, messages)
-                        self.pinned[p["name"]] = m
-                    else:
-                        raise
-                return txt, {"provider": p["name"], "model": p["model"], "fallback_errors": errs, "latency_s": round(time.time() - t0, 1)}
+                txt, used, tried = self._try(p, messages)
+                return txt, {"provider": p["name"], "model": used, "fallback_errors": errs + tried,
+                             "latency_s": round(time.time() - t0, 1)}
             except Exception as e:
                 errs.append(f"{p['name']}: {str(e)[:220]}")
         raise RuntimeError("all providers failed: " + " | ".join(errs))
+
+    OVERLOAD = (0, 429, 500, 502, 503, 504)
+
+    def _try(self, p, messages):
+        """Call one provider and return (text, model_used, notes).
+        Gemini with an auto-selected model: if that model is gone (400/404) the next working Flash model is pinned;
+        if it is only overloaded (503/429/timeout) the next best Flash model answers this call and the pin is unchanged."""
+        preferred = p["model"]
+        auto = p["name"] == "gemini" and not p.get("explicit")
+        order, i, tried, gone = [preferred], 0, [], False
+        while True:
+            model = order[i]
+            p["model"] = model
+            try:
+                txt = self._call(p, messages)
+                if gone:
+                    self.pinned[p["name"]] = model            # the preferred model no longer exists: remember the replacement
+                    preferred = model
+                p["model"] = preferred
+                return txt, model, tried
+            except ApiError as e:
+                tried.append(f"{model}: {e}"[:140])
+                if not auto or not (e.code in (400, 404) or e.code in self.OVERLOAD):
+                    p["model"] = preferred
+                    raise
+                if len(order) == 1:                            # first failure: look up alternatives once
+                    try:
+                        order += [m for m in self._candidates(p) if m != preferred][:3]
+                    except Exception:
+                        pass
+                gone = gone or e.code in (400, 404)
+                i += 1
+                if i >= len(order):
+                    p["model"] = preferred
+                    raise RuntimeError("; ".join(tried))
+
+    def _candidates(self, p):
+        url = p["url"].rsplit("/chat/completions", 1)[0] + "/models"
+        data = self._open(urllib.request.Request(url, headers={"Authorization": "Bearer " + p["key"]}), timeout=30)
+        ids = [str(x.get("id", "")).replace("models/", "") for x in data.get("data", [])]
+        bad = ("lite", "image", "tts", "live", "audio", "embed", "robotics", "computer", "vision", "exp")
+        flash = [i for i in ids if "flash" in i and not any(b in i for b in bad)]
+        stable = [i for i in flash if "preview" not in i] + [i for i in flash if "preview" in i]
+        ver = lambda s: [float(x) for x in re.findall(r"\d+(?:\.\d+)?", s)] or [0]
+        stable.sort(key=lambda s: ("preview" in s, [-v for v in ver(s)], len(s)))
+        if not stable:
+            raise ApiError(404, "no usable flash model; available: " + ", ".join(ids[:15]))
+        return stable
 
     @staticmethod
     def _open(req, timeout=120):
@@ -90,18 +130,6 @@ class Client:
                 if e.code == 429 and attempt < 2:
                     time.sleep(25); continue
                 raise
-
-    def _discover(self, p):
-        url = p["url"].rsplit("/chat/completions", 1)[0] + "/models"
-        data = self._open(urllib.request.Request(url, headers={"Authorization": "Bearer " + p["key"]}))
-        ids = [str(x.get("id", "")).replace("models/", "") for x in data.get("data", [])]
-        bad = ("lite", "image", "tts", "live", "audio", "embed", "robotics", "computer", "vision", "exp")
-        flash = [i for i in ids if "flash" in i and not any(b in i for b in bad)]
-        stable = [i for i in flash if "preview" not in i] or flash
-        if not stable:
-            raise ApiError(404, "no usable flash model; available: " + ", ".join(ids[:15]))
-        ver = lambda s: [float(x) for x in re.findall(r"\d+(?:\.\d+)?", s)] or [0]
-        return sorted(stable, key=lambda s: (ver(s), -len(s)), reverse=True)[0]
 
 
 def extract_json(text):
