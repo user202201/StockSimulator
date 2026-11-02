@@ -54,6 +54,7 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_MODEL: ${{ vars.GH_MODEL }}
+          ENABLE_GH_MODELS: ${{ vars.ENABLE_GH_MODELS }}
 
       - name: Commit data to data branch
         id: commit

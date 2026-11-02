@@ -25,7 +25,7 @@ def providers():
         base = (env("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
         ps.append({"name": "gemini", "url": base + "/chat/completions", "key": env("GEMINI_API_KEY"),
                    "model": env("GEMINI_MODEL") or "gemini-2.5-flash", "explicit": bool(env("GEMINI_MODEL"))})
-    if env("GITHUB_TOKEN"):
+    if env("GITHUB_TOKEN") and env("ENABLE_GH_MODELS"):      # opt-in: observed returning a plain "OK" body (service retired?)
         ps.append({"name": "github-models", "url": "https://models.github.ai/inference/chat/completions",
                    "key": env("GITHUB_TOKEN"), "model": env("GH_MODEL") or "openai/gpt-4.1-mini"})
     return ps
@@ -45,6 +45,7 @@ class Client:
     def decide(self, messages, payload=None):
         errs = []
         for p in self.providers:
+            t0 = time.time()
             try:
                 try:
                     txt = self._call(p, messages)
@@ -56,32 +57,37 @@ class Client:
                         self.pinned[p["name"]] = m
                     else:
                         raise
-                return txt, {"provider": p["name"], "model": p["model"], "fallback_errors": errs}
+                return txt, {"provider": p["name"], "model": p["model"], "fallback_errors": errs, "latency_s": round(time.time() - t0, 1)}
             except Exception as e:
                 errs.append(f"{p['name']}: {str(e)[:220]}")
         raise RuntimeError("all providers failed: " + " | ".join(errs))
 
     @staticmethod
-    def _open(req):
+    def _open(req, timeout=120):
         try:
-            with urllib.request.urlopen(req, timeout=90) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 raw = r.read()
         except urllib.error.HTTPError as e:
             raise ApiError(e.code, e.read().decode("utf-8", "replace")[:160].replace("\n", " "))
+        except (TimeoutError, urllib.error.URLError, OSError) as e:
+            raise ApiError(0, f"timeout/network after {timeout}s: {str(e)[:80]}")
         try:
             return json.loads(raw)
         except ValueError:
             raise ApiError(0, f"non-JSON response: {raw[:100]!r}")
 
     def _call(self, p, messages):
-        body = json.dumps({"model": p["model"], "messages": messages, "temperature": 0, "max_tokens": 4096}).encode()
-        for attempt in range(2):
+        extras = {"reasoning_effort": "low"} if p["name"] == "gemini" else {}   # thinking models can take minutes otherwise
+        for attempt in range(3):
+            body = json.dumps({"model": p["model"], "messages": messages, "temperature": 0, "max_tokens": 3000, **extras}).encode()
             req = urllib.request.Request(p["url"], data=body, headers={
                 "Content-Type": "application/json", "Authorization": "Bearer " + p["key"]})
             try:
                 return self._open(req)["choices"][0]["message"]["content"]
             except ApiError as e:
-                if e.code == 429 and attempt == 0:
+                if e.code == 400 and extras and "reasoning" in e.body.lower():
+                    extras = {}; continue                      # this model rejects reasoning_effort
+                if e.code == 429 and attempt < 2:
                     time.sleep(25); continue
                 raise
 
