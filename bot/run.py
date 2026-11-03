@@ -50,8 +50,10 @@ NY = ZoneInfo("America/New_York")
 
 # rule_long (A)
 A_MAX_POS, A_WEIGHT, A_HARD_STOP, A_TRAIL = 4, 0.25, 0.07, 0.08
+A_VOL_TARGET, A_W_MIN, A_W_MAX = 0.004, 0.10, 0.30   # A: volatility-targeted sizing: weight = target / daily vol, clamped (calmer stocks get more)
 # rule_short (B)
 B_MAX_POS, B_WEIGHT, B_DIP, B_TP, B_SL = 4, 0.20, 0.012, 0.010, 0.008
+B_VOL_TARGET, B_W_MIN, B_W_MAX = 0.003, 0.08, 0.25   # B: same idea, smaller
 INTRADAY_WINDOW = ((10, 0), (15, 30))    # B: new entries only inside this window
 EOD_AT = (15, 30)                        # B: end-of-day check (orders queued now still fill at the 15:45 run)
 B_CARRY_MIN = 0.0                        # B: at the EOD check, positions in profit are carried overnight; the rest are sold
@@ -59,14 +61,14 @@ B_CARRY_MIN = 0.0                        # B: at the EOD check, positions in pro
 RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free slot, per day (v2: keeps exposure and trade rate close to the real traders)
 RANDOM_VER = 2
 
-NO_LIMIT = 99                     # "no fixed limit" for the AI traders (per-position weight cap still applies)
+NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
 E_DEFAULT_CAP, E_RESERVE = 60, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
-    "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 0.25, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
+    "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
                 "rounds": [(10, 0)], "news_age": 36, "flatten": None, "no_new_after": None, "reentry": True},
-    "ai_short": {"horizon": "short", "max_pos": NO_LIMIT, "cap": 0.20, "stop": 0.03, "min_hold": 0, "max_buys": NO_LIMIT,
+    "ai_short": {"horizon": "short", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.03, "min_hold": 0, "max_buys": NO_LIMIT,
                  "rounds": [(10, 0), (11, 30), (13, 0), (14, 30), (15, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45), "reentry": True},
-    "ai_aggr": {"horizon": "aggr", "max_pos": NO_LIMIT, "cap": 0.50, "stop": None, "min_hold": 0, "max_buys": NO_LIMIT,
+    "ai_aggr": {"horizon": "aggr", "max_pos": NO_LIMIT, "cap": 1.0, "stop": None, "min_hold": 0, "max_buys": NO_LIMIT,
                 "rounds": [(h, m) for h in range(10, 16) for m in (0, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45),
                 "reentry": True, "budget": True},
 }
@@ -75,27 +77,27 @@ ACCOUNTS = {
     "rule_long": dict(name="A 趋势规则", kind="rule_long", style="规则 · 中线趋势", freq="每 15 分钟检查，持有数天到数周",
         desc="完全按预设条件买卖，没有 AI。顺势而为：股价站上 50 日均线、短期强于中期、动量为正时买入。",
         rules=["买入：现价>50日均线，20日均线>50日均线，20日动量>0，RSI<75，且 SPY 在 200 日均线之上",
-               "最多同时持有 4 只，每只约占总资产 25%，按 60 日动量排序选股",
+               "最多同时持有 4 只，按 60 日动量排序选股；仓位按波动率调整（波动越大买得越少，每只 10%–30%），不是平均分配",
                "卖出：亏损 7% 止损 / 从最高点回撤 8% / 跌破 50 日均线",
                "同一天买入的股票当天不卖，卖出后当天不再买回"]),
     "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线", freq="每 15 分钟检查，可一天多次交易，有盈利的可留仓过夜",
         desc="完全按预设条件做短线：趋势向上的股票盘中回调时低吸，涨一点就卖；收盘前把没盈利的卖掉，有盈利的留过夜。没有 AI。",
         rules=["买入：10:00–15:30 之间，上升趋势股票（现价>50日均线且20日均线>50日均线）较今日开盘价回落 ≥1.2%，且 SPY 当日跌幅没有超过 1.5%",
-               "最多同时持有 4 只，每只约占总资产 20%，每只股票每天最多交易一次",
+               "最多同时持有 4 只，仓位按波动率调整（每只 8%–25%），每只股票每天最多交易一次",
                "卖出：盈利 +1.0% 止盈 / 亏损 -0.8% 止损 / 15:30 收盘前检查：没有盈利的卖出，有盈利的留仓过夜"]),
     "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:00），持有数天到数周",
         desc="每天开盘半小时后，AI 读取 21 只股票的行情指标和最新新闻标题，自己判断买什么、卖什么、仓位多少。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
-               "代码只保留基本风控：单只不超过 25%，买入后至少持有 2 天，亏损 10% 强制止损；不限制持仓只数和选股",
+               "代码只保留基本风控：买入后至少持有 2 天，亏损 10% 强制止损；不限制持仓只数、选股和单只仓位（可以集中持有一只，也可以分散）",
                "资金使用（软性要求，不强制）：波段投资者通常保持 70%–90% 仓位，现金超过 30% 时 AI 需要说明理由"]),
     "ai_short": dict(name="D AI 短线", kind="ai_short", style="AI + 新闻 · 短线", freq="每天 5 次（美东 10:00 / 11:30 / 13:00 / 14:30 / 15:30 收盘复盘），可隔夜持有",
         desc="一天内多次复盘，AI 结合当天走势和新闻做短线交易；15:30 的收盘复盘由 AI 决定每个仓位留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
-               "代码只保留基本风控：单只不超过 20%，亏损 3% 强制止损，15:45 后不开新仓；不限制持仓只数和选股，按操盘手惯例自行保留一定现金"]),
+               "代码只保留基本风控：亏损 3% 强制止损，15:45 后不开新仓；不限制持仓只数、选股和单只仓位（可以集中持有一只，也可以分散），按操盘手惯例自行保留一定现金"]),
     "ai_aggr": dict(name="E AI 激进", kind="ai_aggr", style="AI + 新闻 · 高周转", freq="每 30 分钟复盘（美东 10:00–15:30，约 12 次，受免费 AI 额度限制），可隔夜持有",
         desc="从 D 克隆、更激进的版本：目标是提高资金周转率，让资金尽量一直在运转，用来测试“高周转”是否更有效率。买卖次数、持仓只数都不设限，只受免费 AI 额度限制。",
         rules=["AI 自主决策，必须引用新闻编号；看多/看空辩论对它是可选的（为了速度）",
-               "没有持仓数量限制、没有强制止损、没有每轮买入次数限制；只保留：单只不超过 50%、只做多、不加杠杆",
+               "没有持仓数量限制、没有强制止损、没有每轮买入次数限制、没有单只仓位上限；只保留：只做多、不加杠杆、不能超过可用资金",
                "实验设定：卖出的钱立即可以再买，也不受 PDT 限制（相当于保证金账户的日内交易条件，但不加杠杆）——这和其他账户不同，对比时请注意",
                "每天约 12 次复盘，受免费 AI 额度限制；额度用尽时自动暂停当天的复盘"]),
     "spy": dict(name="SPY 买入持有", kind="spy", style="对照 · 基准", freq="只在开局买入一次",
@@ -103,7 +105,7 @@ ACCOUNTS = {
     "equal": dict(name="股票池等权持有", kind="equal", style="对照 · 基准", freq="只在开局买入一次",
         desc="基准：开局把本金等分买入全部 21 只股票后不再操作，用来抵消“所选股票本来就是强势股”的偏差。", rules=[]),
     "random": dict(name="随机决策", kind="random", style="对照 · 随机", freq="每天抽签一次",
-        desc="对照：买卖完全随机，用来检验各交易员是否真的优于运气。", rules=["每个持仓每天 10% 概率卖出；每个空位每天 50% 概率随机买入一只（最多同时持有 4 只，与交易员的持仓水平接近）"]),
+        desc="对照：买卖完全随机，用来检验各交易员是否真的优于运气。", rules=["每个持仓每天 10% 概率卖出；每个空位每天 50% 概率随机买入一只，仓位在 10%–30% 之间随机（最多同时持有 4 只，与交易员的持仓水平接近）"]),
 }
 
 
@@ -160,6 +162,16 @@ def snap(c):
     return {"price": f(c[-1]), "sma20": f(sma(c, 20)), "sma50": f(sma(c, 50)), "rsi": f(rsi(c)),
             "mom20": f(c[-1] / c[-21] - 1) if len(c) > 20 else None,
             "mom60": f(c[-1] / c[-61] - 1) if len(c) > 60 else None}
+
+def vol20(c):
+    """Daily return volatility over the last 20 closes."""
+    rets = [c[k] / c[k - 1] - 1 for k in range(len(c) - 20, len(c))]
+    mu = sum(rets) / len(rets)
+    return (sum((x - mu) ** 2 for x in rets) / len(rets)) ** 0.5
+
+def vol_weight(c, target, lo, hi):
+    s = max(vol20(c), 1e-4)
+    return min(max(target / s, lo), hi), s
 
 def uptrend(c):
     return len(c) >= 51 and c[-1] > sma(c, 50) and sma(c, 20) > sma(c, 50)
@@ -323,11 +335,13 @@ def decide_rule_long(acct, env):
         if n >= A_MAX_POS:
             break
         eq = equity_of(acct, prices)
-        dollars = min(eq * A_WEIGHT, acct["cash"] - committed(acct))
+        w, sigma = vol_weight(closes[sym], A_VOL_TARGET, A_W_MIN, A_W_MAX)
+        dollars = min(eq * w, acct["cash"] - committed(acct))
         if dollars < 50:
             break
         queue(acct, "BUY", sym, ts, closes[sym][-1], K("r.uptrend", m=f"{score:+.1%}"),
-              {"checks": entry_checks(closes[sym], closes[BENCH], score, rank, A_MAX_POS - n), "ind": snap(closes[sym]),
+              {"checks": entry_checks(closes[sym], closes[BENCH], score, rank, A_MAX_POS - n) +
+                         [{"text": K("c.size", s=f"{sigma:.1%}", t=f"{A_VOL_TARGET:.1%}", w=f"{w:.0%}", lo=f"{A_W_MIN:.0%}", hi=f"{A_W_MAX:.0%}"), "ok": True}], "ind": snap(closes[sym]),
                "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
         n += 1
 
@@ -364,14 +378,16 @@ def decide_rule_short(acct, env):
         if n >= B_MAX_POS:
             break
         eq = equity_of(acct, prices)
-        dollars = min(eq * B_WEIGHT, acct["cash"] - committed(acct))
+        c = closes[sym]
+        w, sigma = vol_weight(c, B_VOL_TARGET, B_W_MIN, B_W_MAX)
+        dollars = min(eq * w, acct["cash"] - committed(acct))
         if dollars < 50:
             break
-        c = closes[sym]
         checks = [{"text": K("c.dip", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", thr=f"{B_DIP:.1%}"), "ok": True},
                   {"text": K("c.uptrend", s50=f"${sma(c, 50):.2f}", s20=f"${sma(c, 20):.2f}"), "ok": True},
                   {"text": K("c.spy_day", chg=f"{spy_chg:+.2%}"), "ok": True},
-                  {"text": K("c.window", hm=f"{hm[0]:02d}:{hm[1]:02d}"), "ok": True}]
+                  {"text": K("c.window", hm=f"{hm[0]:02d}:{hm[1]:02d}"), "ok": True},
+                  {"text": K("c.size", s=f"{sigma:.1%}", t=f"{B_VOL_TARGET:.1%}", w=f"{w:.0%}", lo=f"{B_W_MIN:.0%}", hi=f"{B_W_MAX:.0%}"), "ok": True}]
         queue(acct, "BUY", sym, ts, c[-1], K("r.dip", d=f"{dip:+.1%}"),
               {"checks": checks, "ind": snap(c), "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
         n += 1
@@ -412,7 +428,7 @@ def decide_random(acct, env):
             sym = rnd.choice(pool)
             pool.remove(sym)
             eq = equity_of(acct, prices)
-            dollars = min(eq * A_WEIGHT, acct["cash"] - committed(acct))
+            dollars = min(eq * rnd.uniform(0.10, 0.30), acct["cash"] - committed(acct))      # random size too: 10%-30% of equity
             if dollars >= 50:
                 queue(acct, "BUY", sym, ts, closes[sym][-1], K("r.rnd_buy"),
                       {"checks": [{"text": K("c.rnd_buy", x=f"{x:.2f}", p=RANDOM_BUY_PROB), "ok": True}],

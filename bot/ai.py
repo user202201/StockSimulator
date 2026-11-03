@@ -169,10 +169,11 @@ Cite supporting headlines by id (e.g. "N3") in headline_ids when news influenced
 Before deciding on any BUY, write the strongest argument FOR it (bull) and the strongest argument AGAINST it (bear). If the bear case is at least as strong as the bull case, do NOT buy.
 Reply with ONE JSON object only, no markdown, in exactly this shape. All free text must be given in THREE languages (en, fr, zh = Simplified Chinese), each concise (<=100 chars per field):
 {"summary": {"en": "market view", "fr": "...", "zh": "..."},
- "decisions": [{"symbol": "NVDA", "action": "BUY|SELL|HOLD", "weight": 0.15, "confidence": 0.0-1.0,
+ "decisions": [{"symbol": "NVDA", "action": "BUY|SELL|HOLD", "weight": <number from 0.05 up to the weight cap>, "confidence": 0.0-1.0,
                 "bull": {"en": "strongest case for", "fr": "...", "zh": "..."},
                 "bear": {"en": "strongest case against", "fr": "...", "zh": "..."},
                 "reason": {"en": "final reason", "fr": "...", "zh": "..."}, "headline_ids": ["N3"]}]}
+Position sizing: size every BUY by conviction and risk, like a real trader. A high-conviction, lower-volatility idea deserves a large weight (up to the cap); a weaker or more volatile idea a small one (5-10%). Do NOT give all positions the same weight and do NOT default to a round number; if you hold several names their weights should differ for a reason, which you state in "reason". Concentration is your choice: you may put a large share in one idea if you are convinced, and you own that risk.
 Only list symbols you want to BUY or SELL (plus HOLD for held positions you reviewed). weight = fraction of total equity for BUY."""
 
 HORIZON = {
@@ -191,7 +192,7 @@ HORIZON = {
 - You are reviewed every 30 minutes from 10:00 to 15:30 ET. There is no limit on the number of positions or buys: hold as many names as there are good setups. Sale proceeds are available immediately, so you can sell one name and buy another in the same review.
 - Stay deployed: normally 85-100% invested. Sit in cash only when there is genuinely no setup; idle cash is a cost for you.
 - Take small profits quickly (+0.5% to +2%), cut losers fast (about -1%), and rotate stagnant positions into stronger ones. Holding overnight is allowed when there is a clear catalyst.
-- Use the intraday data and fresh news (last few hours). No single position above 50% of equity.
+- Use the intraday data and fresh news (last few hours). Concentration is your choice (no per-position cap), limited only by the cash available.
 - OUTPUT OVERRIDE for you: the bull/bear fields are optional (omit them for speed); list at most 12 decisions and only BUY or SELL (skip HOLD).""",
 }
 
@@ -201,7 +202,7 @@ def build_messages(payload):
     lines = [HORIZON[p["horizon"]], f"Time (US Eastern): {p['now_et']}",
              f"Equity ${p['equity']:.2f}, settled cash available ${p['cash']:.2f}. "
              + ("No fixed limit on the number of positions, " if p["max_positions"] >= 50 else f"Max positions {p['max_positions']}, ")
-             + f"weight cap per position {p['weight_cap']:.0%}.",
+             + ("no per-position cap: you decide how concentrated to be, limited only by the cash available." if p["weight_cap"] >= 1 else f"weight cap per position {p['weight_cap']:.0%}."),
              "Rules: " + "; ".join(p["rules"]), "", "POSITIONS:"]
     lines += [f"- {x['symbol']}: {x['shares']} sh, cost ${x['avg_cost']:.2f}, now ${x['price']:.2f} ({x['pnl_pct']:+.1%}), held {x['held_days']}d"
               for x in p["positions"]] or ["- (none)"]
@@ -271,7 +272,8 @@ class MockClient:
                  and (r["vs_sma50"] or 0) > 0][:(5 if aggr else 2)]
         for r in picks:
             if self.r.random() < (0.9 if aggr else 0.7 if short else 0.5):
-                decs.append({"symbol": r["symbol"], "action": "BUY", "weight": 0.15, "confidence": round(self.r.uniform(.5, .8), 2),
+                conf = round(self.r.uniform(.5, .8), 2)
+                decs.append({"symbol": r["symbol"], "action": "BUY", "weight": round(0.05 + 0.4 * (conf - 0.5) + self.r.uniform(0, 0.08), 2), "confidence": conf,
                              "bull": self._ml("Trend and news both supportive", "Tendance et actualité favorables", "趋势和消息面都支持"),
                              "bear": self._ml("Valuation and a possible market dip", "Valorisation et repli possible du marché", "估值偏高、大盘可能回调"),
                              "reason": ({"en": "Bounce after an intraday pullback", "fr": "Rebond après un repli intrajournalier", "zh": "日内回调后的反弹机会"} if short else
