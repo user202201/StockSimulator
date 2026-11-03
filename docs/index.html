@@ -12,7 +12,8 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 a{color:inherit;text-decoration:none}
 .app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
-aside{position:sticky;top:0;height:100vh;overflow:auto;background:var(--card);border-right:1px solid var(--line);padding:16px 12px}
+aside{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;background:var(--card);border-right:1px solid var(--line);padding:16px 12px 10px}
+#nav{flex:1;min-height:0;overflow-y:auto}
 main{padding:16px 24px 40px;min-width:0}
 h1{font-size:16px;margin:0 4px 2px}h2{font-size:14px;margin:0 0 10px;font-weight:600}h3{font-size:13px;margin:14px 0 6px;color:var(--mut);font-weight:600}
 .sub{color:var(--mut);font-size:12px;margin:0 4px 12px}
@@ -22,7 +23,15 @@ h1{font-size:16px;margin:0 4px 2px}h2{font-size:14px;margin:0 0 10px;font-weight
 .nav .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip{font-variant-numeric:tabular-nums;font-size:12px;font-weight:600}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;flex:none}
-.set{margin:6px 6px 0;font-size:12px}.set label{display:block;color:var(--mut);margin:8px 0 3px}
+.side-foot{position:relative;border-top:1px solid var(--line);padding-top:8px;margin-top:8px}
+.setbtn{width:100%;display:flex;align-items:center;gap:10px;padding:8px;border:0;border-radius:10px;background:transparent;color:var(--fg);font:inherit;cursor:pointer;text-align:left}
+.setbtn:hover,.setbtn[aria-expanded="true"]{background:var(--bg)}
+.setbtn .ic{width:32px;height:32px;border-radius:50%;background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+.setbtn .tx{flex:1;min-width:0;line-height:1.25}.setbtn .tx b{display:block;font-size:13px}.setbtn .tx span{display:block;font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.setbtn .chev{color:var(--mut);font-size:12px}
+.pop{position:absolute;left:0;right:0;bottom:calc(100% + 6px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.22);padding:12px;z-index:30;font-size:12px}
+.pop[hidden]{display:none}.pop label{display:block;color:var(--mut);margin:10px 0 4px}.pop label:first-child{margin-top:0}.pop .hr{border-top:1px solid var(--line);margin:12px 0 4px}
+.pop .row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-radius:6px;color:var(--fg);cursor:pointer}.pop .row:hover{background:var(--bg)}
 .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .seg button{flex:1;border:0;background:transparent;color:var(--fg);padding:5px 4px;font:inherit;font-size:12px;cursor:pointer}
 .seg button.on{background:var(--acc);color:#fff}
@@ -64,7 +73,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .dh button{border:0;background:none;color:var(--mut);font-size:16px;cursor:pointer}
 #db{padding:12px 16px 16px}.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px}.kv span{color:var(--mut)}.big{font-size:15px;font-weight:600}
 @media(max-width:900px){
- .app{grid-template-columns:1fr}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}
+ .app{grid-template-columns:minmax(0,1fr)}aside{display:block;position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);min-width:0}#nav{overflow-x:auto;overflow-y:visible}.pop{bottom:auto;top:calc(100% + 6px)}
  #nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}.navl{display:none}.nav{flex:none;border:1px solid var(--line)}
  main{padding:12px}.two,.two.eq{grid-template-columns:1fr}}
 </style>
@@ -74,8 +83,10 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 <aside>
   <h1 id="ttl"></h1><div class="sub" id="upd"></div>
   <nav id="nav"></nav>
-  <div class="navl" id="setl"></div>
-  <div class="set" id="settings"></div>
+  <div class="side-foot">
+    <div id="pop" class="pop" role="dialog" hidden></div>
+    <button id="setbtn" class="setbtn" aria-haspopup="true" aria-expanded="false"></button>
+  </div>
 </aside>
 <main><div id="mkt" class="mkt"></div><div id="banner"></div><section id="page"></section></main>
 </div>
@@ -313,15 +324,26 @@ function verdicts(){
 
 /* ============================ settings / nav / banners ============================ */
 function applyTheme(){const r=document.documentElement;if(THEME==='auto')r.removeAttribute('data-theme');else r.setAttribute('data-theme',THEME)}
+/* Settings live behind the bottom bar. To add a new setting, push an entry to SETTINGS;
+   to add a plain menu entry (link/action), push to MENU_ITEMS. */
+const SETTINGS=[
+ {id:'lang',label:()=>t('set.lang'),opts:()=>[['zh','中文'],['en','English'],['fr','Français']],get:()=>LANG,set:v=>{LANG=v;store.set('lang',v)},short:()=>({zh:'中文',en:'English',fr:'Français'})[LANG]},
+ {id:'theme',label:()=>t('set.theme'),opts:()=>[['auto',t('theme.auto')],['light',t('theme.light')],['dark',t('theme.dark')]],get:()=>THEME,set:v=>{THEME=v;store.set('theme',v);applyTheme()},short:()=>t('theme.'+THEME)},
+ {id:'tz',label:()=>t('set.tz'),opts:()=>[['et',t('tz.et')],['local',t('tz.local')]],get:()=>TZM,set:v=>{TZM=v;store.set('tz',v);mkTF()},note:()=>t('tz.note.'+TZM),short:()=>t('tz.'+TZM)}
+];
+const MENU_ITEMS=[];   // e.g. {label:()=>'About',icon:'ℹ️',href:'#/about'}  — shown below the settings
+let POP_OPEN=false;
+function setPop(open){POP_OPEN=open;$('pop').hidden=!open;$('setbtn').setAttribute('aria-expanded',open?'true':'false')}
 function settingsUI(){
-  const seg=(key,cur,opts)=>`<div class="seg">${opts.map(([v,l])=>`<button data-set="${key}" data-v="${v}" class="${cur===v?'on':''}">${l}</button>`).join('')}</div>`;
-  $('setl').textContent=t('set.title');
-  $('settings').innerHTML=`<label>${t('set.lang')}</label>${seg('lang',LANG,[['zh','中文'],['en','English'],['fr','Français']])}
-   <label>${t('set.theme')}</label>${seg('theme',THEME,[['auto',t('theme.auto')],['light',t('theme.light')],['dark',t('theme.dark')]])}
-   <label>${t('set.tz')}</label>${seg('tz',TZM,[['et',t('tz.et')],['local',t('tz.local')]])}
-   <div class="sm mut" style="margin-top:8px">${t('tz.note.'+TZM)}</div>`;
-  $('settings').querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.dataset.set,v=b.dataset.v;
-    if(k==='lang'){LANG=v;store.set('lang',v)}if(k==='theme'){THEME=v;store.set('theme',v);applyTheme()}if(k==='tz'){TZM=v;store.set('tz',v);mkTF()}fullRender()})}
+  $('setbtn').innerHTML=`<span class="ic">⚙️</span><span class="tx"><b>${t('set.title')}</b><span>${SETTINGS.map(s=>s.short()).join(' · ')}</span></span><span class="chev">${POP_OPEN?'▾':'▴'}</span>`;
+  const seg=(s)=>`<div class="seg">${s.opts().map(([v,l])=>`<button data-set="${s.id}" data-v="${v}" class="${s.get()===v?'on':''}">${l}</button>`).join('')}</div>${s.note?`<div class="sm mut" style="margin-top:6px">${s.note()}</div>`:''}`;
+  $('pop').innerHTML=SETTINGS.map(s=>`<label>${s.label()}</label>${seg(s)}`).join('')+(MENU_ITEMS.length?`<div class="hr"></div>${MENU_ITEMS.map((m,i)=>`<a class="row" data-menu="${i}" ${m.href?`href="${m.href}"`:''}><span>${m.icon||''}</span><span>${m.label()}</span></a>`).join('')}`:'');
+  $('pop').querySelectorAll('[data-set]').forEach(b=>b.onclick=e=>{e.stopPropagation();const s=SETTINGS.find(x=>x.id===b.dataset.set);s.set(b.dataset.v);fullRender()});
+  $('pop').querySelectorAll('[data-menu]').forEach(a=>a.onclick=()=>{const m=MENU_ITEMS[+a.dataset.menu];if(m.action)m.action();setPop(false)});
+  $('pop').hidden=!POP_OPEN}
+$('setbtn').onclick=e=>{e.stopPropagation();setPop(!POP_OPEN);settingsUI()};
+document.addEventListener('click',e=>{if(POP_OPEN&&!e.target.closest('.side-foot')){setPop(false);settingsUI()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&POP_OPEN){setPop(false);settingsUI()}});
 function nav(route){
   const item=id=>{const a=S.accounts[id];return `<a class="nav ${route===id?'on':''}" href="#/${id}">${dotc(id)}<span class="nm">${nm(id)}</span><span class="chip ${cls(ret(a))}">${pct(ret(a))}</span></a>`};
   $('nav').innerHTML=`<a class="nav ${route==='overview'?'on':''}" href="#/overview"><span class="nm">${t('nav.overview')}</span></a>
