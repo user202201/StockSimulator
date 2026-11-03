@@ -1,9 +1,15 @@
 name: trade
 on:
   schedule:
-    # every 15 min, 13:00-20:59 UTC Mon-Fri; the bot itself checks the real market session
-    - cron: "*/15 13-20 * * 1-5"
+    # Watchdog only: GitHub's cron is unreliable (often hours late), so runs normally chain themselves
+    # (see the last step). Any scheduled run that does fire simply restarts the chain if it had died.
+    - cron: "*/15 12-21 * * 1-5"
   workflow_dispatch:
+    inputs:
+      chained:
+        description: "set by the workflow itself when it re-dispatches the next quarter-hour run"
+        type: boolean
+        default: false
 concurrency:
   group: trade
   cancel-in-progress: false
@@ -16,6 +22,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -55,7 +62,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_MODEL: ${{ vars.GH_MODEL }}
           ENABLE_GH_MODELS: ${{ vars.ENABLE_GH_MODELS }}
-          RETRY_AI: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
+          RETRY_AI: ${{ (github.event_name == 'workflow_dispatch' && !inputs.chained) && '1' || '' }}
 
       - name: Commit data to data branch
         id: commit
@@ -85,3 +92,20 @@ jobs:
       - id: deploy
         if: steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/deploy-pages@v4
+
+      - name: Chain the next run (keeps the 15-minute cadence without relying on cron)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          WAIT=$(python3 bot/next_run.py)
+          echo "next-run helper says: $WAIT"
+          if [ "$WAIT" = "stop" ]; then exit 0; fi
+          sleep "$WAIT"
+          # another run already queued/in progress (e.g. a scheduled one) will carry the chain on itself
+          OTHERS=$(gh run list --workflow trade.yml --json databaseId,status --limit 30 \
+                   -q "[.[] | select(.status != \"completed\" and .databaseId != ${{ github.run_id }})] | length")
+          echo "other active runs: $OTHERS"
+          if [ "$OTHERS" = "0" ]; then
+            gh workflow run trade.yml --ref "$GITHUB_REF_NAME" -f chained=true
+          fi

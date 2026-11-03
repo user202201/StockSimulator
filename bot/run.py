@@ -661,6 +661,9 @@ def run_live():
     if state.get("demo") or state.get("version") != STATE_VERSION:    # new experiment version => start clean
         state = new_state()
     h = state["health"]
+    if state.get("updated") and not os.environ.get("RETRY_AI") and "--force" not in sys.argv \
+            and now.timestamp() - parse_ts(state["updated"]).timestamp() < 480:
+        print("state was updated less than 8 minutes ago (another run just did it); skipping to keep the cadence."); return
     try:
         spy = fetch(BENCH)
         if not session_open(spy["meta"], now.timestamp()) and "--force" not in sys.argv:
