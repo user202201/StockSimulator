@@ -375,15 +375,22 @@ def decide_random(acct, env):
 
 
 # ---------- AI traders ----------
-def market_rows(closes, ctx):
+def market_rows(closes, ctx, intraday=None):
     rows = []
     for s in UNIVERSE:
         c = closes.get(s)
         if not c or len(c) < 61:
             continue
-        i = snap(c)
-        o = ctx.get(s, {}).get("open")
+        i, day = snap(c), ctx.get(s, {})
+        o, hi, lo = day.get("open"), day.get("high"), day.get("low")
+        rets = [c[k] / c[k - 1] - 1 for k in range(len(c) - 20, len(c))]
+        mu = sum(rets) / len(rets)
+        path = (intraday or {}).get(s, [])
         rows.append({"symbol": s, "price": c[-1], "vs_open": (c[-1] / o - 1) if o else None,
+                     "range_pos": ((c[-1] - lo) / (hi - lo)) if (hi and lo and hi > lo) else None,
+                     "h1": (c[-1] / path[-5] - 1) if len(path) >= 5 else None,
+                     "d1": c[-1] / c[-2] - 1, "d5": c[-1] / c[-6] - 1, "off_high": c[-1] / max(c[-60:]) - 1,
+                     "vol20": (sum((x - mu) ** 2 for x in rets) / len(rets)) ** 0.5,
                      "vs_sma20": c[-1] / i["sma20"] - 1, "vs_sma50": c[-1] / i["sma50"] - 1,
                      "rsi": i["rsi"], "mom20": i["mom20"], "mom60": i["mom60"]})
     return rows
@@ -440,7 +447,7 @@ def decide_ai(acct, env, p):
         rules.append("all positions force-closed at 15:30 ET; no new buys after 15:00 ET")
     payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq,
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
-               "rules": rules, "positions": positions, "market": market_rows(closes, ctx), "news": news}
+               "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "news": news}
     messages = aimod.build_messages(payload)
     st["attempts"][key] = st["attempts"].get(key, 0) + 1
     h = env["health_ai"]
@@ -571,7 +578,14 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None):
         items = [n for n in cache["all"] if n["sym"] in UNIVERSE and (now - n["ts"]) / 3600 <= max_age_h][:50]
         return [{"id": f"N{i + 1}", "sym": n["sym"], "title": n["title"], "src": n["src"], "age_h": (now - n["ts"]) / 3600}
                 for i, n in enumerate(items)]
-    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai,
+    today = et_date(ts)
+    intra = state.setdefault("intraday", {"date": today, "px": {}})
+    if intra.get("date") != today:
+        intra["date"], intra["px"] = today, {}
+    for s, c in closes.items():
+        intra["px"].setdefault(s, []).append(round(c[-1], 4))
+        del intra["px"][s][:-30]
+    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai, "intraday": intra["px"],
            "health_ai": state["health"].setdefault("ai", {})}
     for aid, acct in state["accounts"].items():
         settle(acct, ts)

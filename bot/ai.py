@@ -151,8 +151,16 @@ Reply with ONE JSON object only, no markdown, in exactly this shape:
 Only list symbols you want to BUY or SELL (plus HOLD for held positions you reviewed). weight = fraction of total equity for BUY."""
 
 HORIZON = {
-    "long": "Horizon: swing/position trading, days to weeks. You are reviewed ONCE per day. Prefer fewer, higher-conviction trades; avoid churning.",
-    "short": "Horizon: INTRADAY. You are reviewed several times a day; all positions are force-closed shortly before the close. Look for same-day moves of roughly +1% to +3%; cut losers fast.",
+    "long": """ROLE: you are the PATIENT SWING TRADER (account C). You are reviewed ONCE per day and think in days to weeks.
+- Typical holding period 3-15 trading days. Ignore intraday noise; you do not see intraday data on purpose.
+- Prefer buying PULLBACKS inside an established uptrend (price near/just above SMA20-SMA50) or stocks with a clear multi-day catalyst. Do NOT chase: if a stock is already up more than ~3% today, wait for a pullback.
+- Prefer 2-4 concentrated, high-conviction positions over many small ones. Doing nothing is the default.
+- Sell when the thesis is broken (trend broken, catalyst failed) or a multi-day target is reached; do not sell on small dips.""",
+    "short": """ROLE: you are the INTRADAY TRADER (account D). You are reviewed several times a day; every position is force-closed at 15:30 ET.
+- Target moves of roughly +1% to +2% within hours; cut losers fast (about -1.5%). Think in hours, not days.
+- Use the intraday data: position inside today's range, the last-60-minute change, move vs the open. Favor fresh news (last few hours) that the market has NOT fully priced in, and clean intraday pullbacks that bounce.
+- Fading an over-extended spike (already +4% or more) is allowed to skip; chasing it is discouraged.
+- You may rotate: sell a stagnant or failing position to free a slot for a better setup. No new buys after 15:00 ET.""",
 }
 
 
@@ -164,10 +172,16 @@ def build_messages(payload):
              "Rules: " + "; ".join(p["rules"]), "", "POSITIONS:"]
     lines += [f"- {x['symbol']}: {x['shares']} sh, cost ${x['avg_cost']:.2f}, now ${x['price']:.2f} ({x['pnl_pct']:+.1%}), held {x['held_days']}d"
               for x in p["positions"]] or ["- (none)"]
-    lines += ["", "MARKET (price | vs today's open | vs SMA20 | vs SMA50 | RSI14 | 20d | 60d):"]
-    for r in p["market"]:
-        f = lambda v, pc=True: "n/a" if v is None else (f"{v:+.1%}" if pc else f"{v:.0f}")
-        lines.append(f"{r['symbol']} {r['price']:.2f} | {f(r['vs_open'])} | {f(r['vs_sma20'])} | {f(r['vs_sma50'])} | {f(r['rsi'], False)} | {f(r['mom20'])} | {f(r['mom60'])}")
+    f = lambda v, pc=True: "n/a" if v is None else (f"{v:+.1%}" if pc else f"{v:.0f}")
+    if p["horizon"] == "long":
+        lines += ["", "MARKET, daily-bar view (price | today | 5d | 20d | 60d | vs SMA50 | RSI14 | off 60d high | daily vol):"]
+        for r in p["market"]:
+            lines.append(f"{r['symbol']} {r['price']:.2f} | {f(r['d1'])} | {f(r['d5'])} | {f(r['mom20'])} | {f(r['mom60'])} | {f(r['vs_sma50'])} | {f(r['rsi'], False)} | {f(r['off_high'])} | {f(r['vol20'])}")
+    else:
+        lines += ["", "MARKET, intraday view (price | vs open | position in today's range 0%=low 100%=high | last ~60min | vs SMA20 | RSI14 | daily vol):"]
+        for r in p["market"]:
+            rp = "n/a" if r["range_pos"] is None else f"{r['range_pos']:.0%}"
+            lines.append(f"{r['symbol']} {r['price']:.2f} | {f(r['vs_open'])} | {rp} | {f(r['h1'])} | {f(r['vs_sma20'])} | {f(r['rsi'], False)} | {f(r['vol20'])}")
     lines += ["", "NEWS (id | symbol | age | source | headline):"]
     lines += [f"{n['id']} | {n['sym']} | {n['age_h']:.0f}h | {n['src']} | {n['title'][:140]}" for n in p["news"]] or ["(no recent news available)"]
     return [{"role": "system", "content": SYSTEM}, {"role": "user", "content": "\n".join(lines)}]
