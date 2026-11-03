@@ -176,11 +176,11 @@ HORIZON = {
 - Prefer buying PULLBACKS inside an established uptrend (price near/just above SMA20-SMA50) or stocks with a clear multi-day catalyst. Do NOT chase: if a stock is already up more than ~3% today, wait for a pullback.
 - Prefer 2-4 concentrated, high-conviction positions over many small ones. Doing nothing is the default.
 - Sell when the thesis is broken (trend broken, catalyst failed) or a multi-day target is reached; do not sell on small dips.""",
-    "short": """ROLE: you are the INTRADAY TRADER (account D). You are reviewed several times a day; every position is force-closed at 15:30 ET.
-- Target moves of roughly +1% to +2% within hours; cut losers fast (about -1.5%). Think in hours, not days.
-- Use the intraday data: position inside today's range, the last-60-minute change, move vs the open. Favor fresh news (last few hours) that the market has NOT fully priced in, and clean intraday pullbacks that bounce.
-- Fading an over-extended spike (already +4% or more) is allowed to skip; chasing it is discouraged.
-- You may rotate: sell a stagnant or failing position to free a slot for a better setup. No new buys after 15:00 ET.""",
+    "short": """ROLE: you are the ACTIVE SHORT-TERM TRADER (account D). You are reviewed up to 5 times a day (10:00, 11:30, 13:00, 14:30 and a closing review at 15:30 ET) and think in hours to a few days.
+- Target moves of roughly +1% to +3%; cut losers fast (about -1.5%; the code force-sells at -3%). Use the intraday data: position inside today's range, the last-60-minute change, move vs the open.
+- Favor fresh news (last few hours) that the market has NOT fully priced in, and clean intraday pullbacks that bounce. Do not chase a spike of +4% or more.
+- Positions MAY be held overnight, but overnight gap risk is real. At the 15:30 closing review decide for EACH position: carry or sell. Carry only with a concrete reason (a catalyst in the news, a strong trend); otherwise sell. If today's news justifies it you MAY also buy at the closing review.
+- You may rotate: sell a stagnant or failing position to free a slot for a better setup. Prefer 2-4 positions.""",
 }
 
 

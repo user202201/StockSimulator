@@ -52,8 +52,9 @@ NY = ZoneInfo("America/New_York")
 A_MAX_POS, A_WEIGHT, A_HARD_STOP, A_TRAIL = 4, 0.25, 0.07, 0.08
 # rule_short (B)
 B_MAX_POS, B_WEIGHT, B_DIP, B_TP, B_SL = 4, 0.20, 0.012, 0.010, 0.008
-INTRADAY_WINDOW = ((10, 0), (15, 0))     # new entries only inside this window
-FLATTEN_AT = (15, 30)                    # queue exits at 15:30 so the 15:45 run still fills them
+INTRADAY_WINDOW = ((10, 0), (15, 30))    # B: new entries only inside this window
+EOD_AT = (15, 30)                        # B: end-of-day check (orders queued now still fill at the 15:45 run)
+B_CARRY_MIN = 0.0                        # B: at the EOD check, positions in profit are carried overnight; the rest are sold
 # random control
 RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free slot, per day (v2: keeps exposure and trade rate close to the real traders)
 RANDOM_VER = 2
@@ -61,8 +62,8 @@ RANDOM_VER = 2
 AI_PARAMS = {
     "ai_long": {"horizon": "long", "max_pos": 5, "cap": 0.25, "stop": 0.10, "min_hold": 2, "max_buys": 2,
                 "rounds": [(10, 0)], "news_age": 36, "flatten": None, "no_new_after": None},
-    "ai_short": {"horizon": "short", "max_pos": 4, "cap": 0.20, "stop": 0.02, "min_hold": 0, "max_buys": 2,
-                 "rounds": [(10, 0), (11, 30), (13, 0), (14, 30)], "news_age": 8, "flatten": FLATTEN_AT, "no_new_after": (15, 0)},
+    "ai_short": {"horizon": "short", "max_pos": 4, "cap": 0.20, "stop": 0.03, "min_hold": 0, "max_buys": 2,
+                 "rounds": [(10, 0), (11, 30), (13, 0), (14, 30), (15, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45)},
 }
 
 ACCOUNTS = {
@@ -72,20 +73,20 @@ ACCOUNTS = {
                "最多同时持有 4 只，每只约占总资产 25%，按 60 日动量排序选股",
                "卖出：亏损 7% 止损 / 从最高点回撤 8% / 跌破 50 日均线",
                "同一天买入的股票当天不卖，卖出后当天不再买回"]),
-    "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 日内短线", freq="每 15 分钟检查，当天买当天卖",
-        desc="完全按预设条件做日内：趋势向上的股票盘中回调时低吸，涨一点就卖，收盘前清仓。没有 AI。",
-        rules=["买入：10:00–15:00 之间，上升趋势股票（现价>50日均线且20日均线>50日均线）较今日开盘价回落 ≥1.2%，且 SPY 当日跌幅没有超过 1.5%",
+    "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线", freq="每 15 分钟检查，可一天多次交易，有盈利的可留仓过夜",
+        desc="完全按预设条件做短线：趋势向上的股票盘中回调时低吸，涨一点就卖；收盘前把没盈利的卖掉，有盈利的留过夜。没有 AI。",
+        rules=["买入：10:00–15:30 之间，上升趋势股票（现价>50日均线且20日均线>50日均线）较今日开盘价回落 ≥1.2%，且 SPY 当日跌幅没有超过 1.5%",
                "最多同时持有 4 只，每只约占总资产 20%，每只股票每天最多交易一次",
-               "卖出：盈利 +1.0% 止盈 / 亏损 -0.8% 止损 / 15:30 起收盘前清仓"]),
+               "卖出：盈利 +1.0% 止盈 / 亏损 -0.8% 止损 / 15:30 收盘前检查：没有盈利的卖出，有盈利的留仓过夜"]),
     "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:00），持有数天到数周",
         desc="每天开盘半小时后，AI 读取 21 只股票的行情指标和最新新闻标题，自己判断买什么、卖什么、仓位多少。",
         rules=["AI 自主决策，但必须引用新闻编号，代码会核对编号真实存在",
                "代码强制：最多 5 只，单只不超过 25%，每轮最多买 2 只，买入后至少持有 2 天，亏损 10% 强制止损",
                "不确定时可以什么都不做"]),
-    "ai_short": dict(name="D AI 短线", kind="ai_short", style="AI + 新闻 · 日内", freq="每天 4 次（美东 10:00 / 11:30 / 13:00 / 14:30），当天清仓",
-        desc="一天内多次复盘，AI 结合当天走势和新闻做日内交易，收盘前由代码强制清仓。",
-        rules=["AI 自主决策，必须引用新闻编号",
-               "代码强制：最多 4 只，单只不超过 20%，每轮最多买 2 只，亏损 2% 强制止损，15:00 后不开新仓，15:30 起全部清仓"]),
+    "ai_short": dict(name="D AI 短线", kind="ai_short", style="AI + 新闻 · 短线", freq="每天 5 次（美东 10:00 / 11:30 / 13:00 / 14:30 / 15:30 收盘复盘），可隔夜持有",
+        desc="一天内多次复盘，AI 结合当天走势和新闻做短线交易；15:30 的收盘复盘由 AI 决定每个仓位是留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。",
+        rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
+               "代码强制：最多 4 只，单只不超过 20%，每轮最多买 2 只，亏损 3% 强制止损，15:45 后不开新仓"]),
     "spy": dict(name="SPY 买入持有", kind="spy", style="对照 · 基准", freq="只在开局买入一次",
         desc="基准：开局全仓买入 SPY 后不再操作。", rules=[]),
     "equal": dict(name="股票池等权持有", kind="equal", style="对照 · 基准", freq="只在开局买入一次",
@@ -317,10 +318,10 @@ def decide_rule_short(acct, env):
         pos["peak"] = max(pos["peak"], p)
         gain = p / pos["avg_cost"] - 1
         reason = (K("r.tp") if gain >= B_TP else K("r.sl") if gain <= -B_SL else
-                  K("r.flatten") if hm >= FLATTEN_AT else None)
+                  K("r.eod_cut") if hm >= EOD_AT and gain < B_CARRY_MIN else None)
         if reason:
             checks = [{"text": K("c.gain", cost=f"${pos['avg_cost']:.2f}", g=f"{gain:+.2%}", tp=f"{B_TP:.1%}", sl=f"{B_SL:.1%}"), "ok": abs(gain) >= min(B_TP, B_SL)},
-                      {"text": K("c.time", hm=f"{hm[0]:02d}:{hm[1]:02d}", flat=f"{FLATTEN_AT[0]}:{FLATTEN_AT[1]}"), "ok": hm >= FLATTEN_AT}]
+                      {"text": K("c.eod", hm=f"{hm[0]:02d}:{hm[1]:02d}", eod=f"{EOD_AT[0]}:{EOD_AT[1]}", g=f"{gain:+.2%}", thr=f"{B_CARRY_MIN:.1%}"), "ok": hm >= EOD_AT and gain < B_CARRY_MIN}]
             queue(acct, "SELL", sym, ts, p, reason, {"checks": checks, "ind": snap(closes[sym])})
     if not (INTRADAY_WINDOW[0] <= hm < INTRADAY_WINDOW[1]) or BENCH not in closes or BENCH not in ctx:
         return
@@ -463,8 +464,8 @@ def decide_ai(acct, env, p):
                  for s, x in pos_map.items()]
     rules = ["long-only, fractional shares", f"min {p['min_hold']} day hold before selling" if p["min_hold"] else "same-day exits allowed",
              f"max {p['max_buys']} new buys per review", f"code force-sells at -{p['stop']:.0%} loss"]
-    if p["flatten"]:
-        rules.append("all positions force-closed at 15:30 ET; no new buys after 15:00 ET")
+    if p["horizon"] == "short":
+        rules.append("positions MAY be held overnight (gap risk); the 15:30 ET review is the last chance to trade today; no new buys after 15:45 ET")
     payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq,
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
                "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "news": news}
