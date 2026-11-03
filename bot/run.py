@@ -54,7 +54,8 @@ B_MAX_POS, B_WEIGHT, B_DIP, B_TP, B_SL = 4, 0.20, 0.012, 0.010, 0.008
 INTRADAY_WINDOW = ((10, 0), (15, 0))     # new entries only inside this window
 FLATTEN_AT = (15, 30)                    # queue exits at 15:30 so the 15:45 run still fills them
 # random control
-RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.06, 0.20
+RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free slot, per day (v2: keeps exposure and trade rate close to the real traders)
+RANDOM_VER = 2
 
 AI_PARAMS = {
     "ai_long": {"horizon": "long", "max_pos": 5, "cap": 0.25, "stop": 0.10, "min_hold": 2, "max_buys": 2,
@@ -89,7 +90,7 @@ ACCOUNTS = {
     "equal": dict(name="股票池等权持有", kind="equal", style="对照 · 基准", freq="只在开局买入一次",
         desc="基准：开局把本金等分买入全部 21 只股票后不再操作，用来抵消“所选股票本来就是强势股”的偏差。", rules=[]),
     "random": dict(name="随机决策", kind="random", style="对照 · 随机", freq="每天抽签一次",
-        desc="对照：买卖完全随机，用来检验各交易员是否真的优于运气。", rules=["每个持仓每天 6% 概率卖出；有空位时每天 20% 概率随机买入一只"]),
+        desc="对照：买卖完全随机，用来检验各交易员是否真的优于运气。", rules=["每个持仓每天 10% 概率卖出；每个空位每天 50% 概率随机买入一只（最多同时持有 4 只，与交易员的持仓水平接近）"]),
 }
 
 
@@ -192,7 +193,13 @@ def new_account(aid):
     return {"name": c["name"], "kind": c["kind"], "style": c["style"], "freq": c["freq"], "desc": c["desc"], "rules": c["rules"],
             "cash": INITIAL_CASH, "unsettled": [], "positions": {}, "pending": [], "trades": [], "equity": [],
             "events": [], "last_decision": None, "fees_paid": 0.0,
-            "ai": {"done": [], "attempts": {}, "rounds": [], "last_error": None}}
+            "ai": {"done": [], "attempts": {}, "rounds": [], "last_error": None}, **({"ver": RANDOM_VER} if aid == "random" else {})}
+
+def migrate(state):
+    """In-place upgrades that do not need a full restart. Random control v2: replaces the (idle, all-cash) v1 account."""
+    r = state["accounts"].get("random")
+    if r is not None and r.get("ver") != RANDOM_VER and not r["trades"]:
+        state["accounts"]["random"] = new_account("random")
 
 def new_state():
     return {"version": STATE_VERSION, "initial_cash": INITIAL_CASH, "universe": UNIVERSE,
@@ -364,19 +371,20 @@ def decide_random(acct, env):
     if acct["last_decision"] == today:
         return
     acct["last_decision"] = today
-    rnd = random.Random(f"seed42-{today}")
+    rnd = random.Random(f"seed43-{today}")
     pend = {o["symbol"] for o in acct["pending"]}
     for sym in sorted(acct["positions"]):
         x = rnd.random()
         if x < RANDOM_SELL_PROB and sym in closes and sym not in pend and et_date(acct["positions"][sym]["entry"]) != today:
             queue(acct, "SELL", sym, ts, closes[sym][-1], K("r.rnd_sell"),
                   {"checks": [{"text": K("c.rnd_sell", x=f"{x:.2f}", p=RANDOM_SELL_PROB), "ok": True}], "ind": snap(closes[sym])})
-    n = len(acct["positions"]) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
-    x = rnd.random()
-    if n < A_MAX_POS and x < RANDOM_BUY_PROB:
-        pool = sorted(s for s in UNIVERSE if s in closes and s not in acct["positions"] and s not in pend)
-        if pool:
+    held = set(acct["positions"]) | {o["symbol"] for o in acct["pending"] if o["side"] == "BUY"}
+    pool = sorted(s for s in UNIVERSE if s in closes and s not in held and s not in pend)
+    for _ in range(max(A_MAX_POS - len(held), 0)):
+        x = rnd.random()
+        if x < RANDOM_BUY_PROB and pool:
             sym = rnd.choice(pool)
+            pool.remove(sym)
             eq = equity_of(acct, prices)
             dollars = min(eq * A_WEIGHT, acct["cash"] - committed(acct))
             if dollars >= 50:
@@ -685,6 +693,7 @@ def run_live():
     state = load_state()
     if state.get("demo") or state.get("version") != STATE_VERSION:    # new experiment version => start clean
         state = new_state()
+    migrate(state)
     h = state["health"]
     if state.get("updated") and not os.environ.get("RETRY_AI") and "--force" not in sys.argv \
             and now.timestamp() - parse_ts(state["updated"]).timestamp() < 480:
