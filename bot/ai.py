@@ -33,6 +33,8 @@ def providers():
 
 class Client:
     def __init__(self, pinned=None):
+        self.http_calls = 0                  # HTTP requests made (for the daily quota bookkeeping)
+        self.daily_quota_hit = False         # set when the provider reports its per-day quota is exhausted
         self.providers = providers()
         self.pinned = pinned if pinned is not None else {}      # provider -> model chosen by auto-discovery (persisted in state)
         for p in self.providers:
@@ -139,9 +141,12 @@ class Client:
             body = json.dumps({"model": p["model"], "messages": messages, "temperature": 0, "max_tokens": 4096, **extras}).encode()
             req = urllib.request.Request(p["url"], data=body, headers={
                 "Content-Type": "application/json", "Authorization": "Bearer " + p["key"]})
+            self.http_calls += 1
             try:
                 return self._open(req)["choices"][0]["message"]["content"]
             except ApiError as e:
+                if e.code == 429 and "perday" in re.sub(r"[^a-z]", "", e.body.lower()):
+                    self.daily_quota_hit = True
                 if e.code == 400 and extras and "reasoning" in e.body.lower():
                     extras = {}; continue                      # this model rejects reasoning_effort
                 if e.code == 429 and attempt < 2:
@@ -174,21 +179,28 @@ HORIZON = {
     "long": """ROLE: you are the PATIENT SWING TRADER (account C). You are reviewed ONCE per day and think in days to weeks.
 - Typical holding period 3-15 trading days. Ignore intraday noise; you do not see intraday data on purpose.
 - Prefer buying PULLBACKS inside an established uptrend (price near/just above SMA20-SMA50) or stocks with a clear multi-day catalyst. Do NOT chase: if a stock is already up more than ~3% today, wait for a pullback.
-- Prefer 2-4 concentrated, high-conviction positions over many small ones. Doing nothing is the default.
+- Normal trader practice: keep a cash reserve (roughly 10-30%) so you can act on opportunities, and deploy more when conviction is high. Prefer concentrated, high-conviction positions over many small ones; the number of names is up to you. Doing nothing is a valid answer.
 - Sell when the thesis is broken (trend broken, catalyst failed) or a multi-day target is reached; do not sell on small dips.""",
     "short": """ROLE: you are the ACTIVE SHORT-TERM TRADER (account D). You are reviewed up to 5 times a day (10:00, 11:30, 13:00, 14:30 and a closing review at 15:30 ET) and think in hours to a few days.
 - Target moves of roughly +1% to +3%; cut losers fast (about -1.5%; the code force-sells at -3%). Use the intraday data: position inside today's range, the last-60-minute change, move vs the open.
 - Favor fresh news (last few hours) that the market has NOT fully priced in, and clean intraday pullbacks that bounce. Do not chase a spike of +4% or more.
 - Positions MAY be held overnight, but overnight gap risk is real. At the 15:30 closing review decide for EACH position: carry or sell. Carry only with a concrete reason (a catalyst in the news, a strong trend); otherwise sell. If today's news justifies it you MAY also buy at the closing review.
-- You may rotate: sell a stagnant or failing position to free a slot for a better setup. Prefer 2-4 positions.""",
+- You may rotate: sell a stagnant or failing position for a better setup. Keep a sensible cash reserve (roughly 10-30%) for opportunities; the number of positions is up to you.""",
+    "aggr": """ROLE: you are the AGGRESSIVE HIGH-TURNOVER TRADER (account E), a more aggressive clone of the short-term trader. Goal: high capital efficiency — keep capital working and rotate it fast.
+- You are reviewed every 30 minutes from 10:00 to 15:30 ET. There is no limit on the number of positions or buys: hold as many names as there are good setups. Sale proceeds are available immediately, so you can sell one name and buy another in the same review.
+- Stay deployed: normally 85-100% invested. Sit in cash only when there is genuinely no setup; idle cash is a cost for you.
+- Take small profits quickly (+0.5% to +2%), cut losers fast (about -1%), and rotate stagnant positions into stronger ones. Holding overnight is allowed when there is a clear catalyst.
+- Use the intraday data and fresh news (last few hours). No single position above 50% of equity.
+- OUTPUT OVERRIDE for you: the bull/bear fields are optional (omit them for speed); list at most 12 decisions and only BUY or SELL (skip HOLD).""",
 }
 
 
 def build_messages(payload):
     p = payload
     lines = [HORIZON[p["horizon"]], f"Time (US Eastern): {p['now_et']}",
-             f"Equity ${p['equity']:.2f}, settled cash available ${p['cash']:.2f}. Max positions {p['max_positions']}, "
-             f"weight cap per position {p['weight_cap']:.0%}.",
+             f"Equity ${p['equity']:.2f}, settled cash available ${p['cash']:.2f}. "
+             + ("No fixed limit on the number of positions, " if p["max_positions"] >= 50 else f"Max positions {p['max_positions']}, ")
+             + f"weight cap per position {p['weight_cap']:.0%}.",
              "Rules: " + "; ".join(p["rules"]), "", "POSITIONS:"]
     lines += [f"- {x['symbol']}: {x['shares']} sh, cost ${x['avg_cost']:.2f}, now ${x['price']:.2f} ({x['pnl_pct']:+.1%}), held {x['held_days']}d"
               for x in p["positions"]] or ["- (none)"]
@@ -243,7 +255,7 @@ class MockClient:
                 "movers": [{"symbol": m["symbol"], "why": self._ml("(demo) No clear news; likely sector flow.", "(démo) Pas de nouvelle claire ; probablement un flux sectoriel.", "（演示）没有明确新闻，可能是板块资金流动。")} for m in mv],
                 "lesson": {"topic": self.r.choice(payload["topics"]), "title": self._ml("(demo) Today's concept", "(démo) Notion du jour", "（演示）今日概念"),
                            "body": self._ml("(demo) This concept showed up in today's data; see the glossary for the full explanation.", "(démo) Cette notion apparaît dans les données du jour ; voir le glossaire.", "（演示）这个概念出现在今天的数据里，完整解释见词典。")}}), meta
-        p, decs, short = payload, [], payload["horizon"] == "short"
+        p, decs, short, aggr = payload, [], payload["horizon"] in ("short", "aggr"), payload["horizon"] == "aggr"
         by_sym = {}
         for n in p["news"]:
             by_sym.setdefault(n["sym"], []).append(n["id"])
@@ -255,9 +267,9 @@ class MockClient:
         held = {x["symbol"] for x in p["positions"]}
         key = (lambda r: (r["vs_open"] or 0)) if short else (lambda r: -(r["mom60"] or 0))
         picks = [r for r in sorted(p["market"], key=key) if r["symbol"] not in held and (r["rsi"] or 50) < 70
-                 and (r["vs_sma50"] or 0) > 0][:2]
+                 and (r["vs_sma50"] or 0) > 0][:(5 if aggr else 2)]
         for r in picks:
-            if self.r.random() < (0.7 if short else 0.5):
+            if self.r.random() < (0.9 if aggr else 0.7 if short else 0.5):
                 decs.append({"symbol": r["symbol"], "action": "BUY", "weight": 0.15, "confidence": round(self.r.uniform(.5, .8), 2),
                              "bull": self._ml("Trend and news both supportive", "Tendance et actualité favorables", "趋势和消息面都支持"),
                              "bear": self._ml("Valuation and a possible market dip", "Valorisation et repli possible du marché", "估值偏高、大盘可能回调"),

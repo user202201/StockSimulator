@@ -59,11 +59,16 @@ B_CARRY_MIN = 0.0                        # B: at the EOD check, positions in pro
 RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free slot, per day (v2: keeps exposure and trade rate close to the real traders)
 RANDOM_VER = 2
 
+NO_LIMIT = 99                     # "no fixed limit" for the AI traders (per-position weight cap still applies)
+E_DEFAULT_CAP, E_RESERVE = 60, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
-    "ai_long": {"horizon": "long", "max_pos": 5, "cap": 0.25, "stop": 0.10, "min_hold": 2, "max_buys": 2,
-                "rounds": [(10, 0)], "news_age": 36, "flatten": None, "no_new_after": None},
-    "ai_short": {"horizon": "short", "max_pos": 4, "cap": 0.20, "stop": 0.03, "min_hold": 0, "max_buys": 2,
-                 "rounds": [(10, 0), (11, 30), (13, 0), (14, 30), (15, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45)},
+    "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 0.25, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
+                "rounds": [(10, 0)], "news_age": 36, "flatten": None, "no_new_after": None, "reentry": True},
+    "ai_short": {"horizon": "short", "max_pos": NO_LIMIT, "cap": 0.20, "stop": 0.03, "min_hold": 0, "max_buys": NO_LIMIT,
+                 "rounds": [(10, 0), (11, 30), (13, 0), (14, 30), (15, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45), "reentry": True},
+    "ai_aggr": {"horizon": "aggr", "max_pos": NO_LIMIT, "cap": 0.50, "stop": None, "min_hold": 0, "max_buys": NO_LIMIT,
+                "rounds": [(h, m) for h in range(10, 16) for m in (0, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45),
+                "reentry": True, "budget": True},
 }
 
 ACCOUNTS = {
@@ -80,13 +85,18 @@ ACCOUNTS = {
                "卖出：盈利 +1.0% 止盈 / 亏损 -0.8% 止损 / 15:30 收盘前检查：没有盈利的卖出，有盈利的留仓过夜"]),
     "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:00），持有数天到数周",
         desc="每天开盘半小时后，AI 读取 21 只股票的行情指标和最新新闻标题，自己判断买什么、卖什么、仓位多少。",
-        rules=["AI 自主决策，但必须引用新闻编号，代码会核对编号真实存在",
-               "代码强制：最多 5 只，单只不超过 25%，每轮最多买 2 只，买入后至少持有 2 天，亏损 10% 强制止损",
-               "不确定时可以什么都不做"]),
-    "ai_short": dict(name="D AI 短线", kind="ai_short", style="AI + 新闻 · 短线", freq="每天 5 次（美东 10:00 / 11:30 / 13:00 / 14:30 / 15:30 收盘复盘），可隔夜持有",
-        desc="一天内多次复盘，AI 结合当天走势和新闻做短线交易；15:30 的收盘复盘由 AI 决定每个仓位是留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
-               "代码强制：最多 4 只，单只不超过 20%，每轮最多买 2 只，亏损 3% 强制止损，15:45 后不开新仓"]),
+               "代码只保留基本风控：单只不超过 25%，买入后至少持有 2 天，亏损 10% 强制止损；不限制持仓只数和选股，按操盘手惯例自行保留一定现金"]),
+    "ai_short": dict(name="D AI 短线", kind="ai_short", style="AI + 新闻 · 短线", freq="每天 5 次（美东 10:00 / 11:30 / 13:00 / 14:30 / 15:30 收盘复盘），可隔夜持有",
+        desc="一天内多次复盘，AI 结合当天走势和新闻做短线交易；15:30 的收盘复盘由 AI 决定每个仓位留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。",
+        rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
+               "代码只保留基本风控：单只不超过 20%，亏损 3% 强制止损，15:45 后不开新仓；不限制持仓只数和选股，按操盘手惯例自行保留一定现金"]),
+    "ai_aggr": dict(name="E AI 激进", kind="ai_aggr", style="AI + 新闻 · 高周转", freq="每 30 分钟复盘（美东 10:00–15:30，约 12 次，受免费 AI 额度限制），可隔夜持有",
+        desc="从 D 克隆、更激进的版本：目标是提高资金周转率，让资金尽量一直在运转，用来测试“高周转”是否更有效率。买卖次数、持仓只数都不设限，只受免费 AI 额度限制。",
+        rules=["AI 自主决策，必须引用新闻编号；看多/看空辩论对它是可选的（为了速度）",
+               "没有持仓数量限制、没有强制止损、没有每轮买入次数限制；只保留：单只不超过 50%、只做多、不加杠杆",
+               "实验设定：卖出的钱立即可以再买，也不受 PDT 限制（相当于保证金账户的日内交易条件，但不加杠杆）——这和其他账户不同，对比时请注意",
+               "每天约 12 次复盘，受免费 AI 额度限制；额度用尽时自动暂停当天的复盘"]),
     "spy": dict(name="SPY 买入持有", kind="spy", style="对照 · 基准", freq="只在开局买入一次",
         desc="基准：开局全仓买入 SPY 后不再操作。", rules=[]),
     "equal": dict(name="股票池等权持有", kind="equal", style="对照 · 基准", freq="只在开局买入一次",
@@ -195,10 +205,13 @@ def new_account(aid):
     return {"name": c["name"], "kind": c["kind"], "style": c["style"], "freq": c["freq"], "desc": c["desc"], "rules": c["rules"],
             "cash": INITIAL_CASH, "unsettled": [], "positions": {}, "pending": [], "trades": [], "equity": [],
             "events": [], "last_decision": None, "fees_paid": 0.0,
-            "ai": {"done": [], "attempts": {}, "rounds": [], "last_error": None}, **({"ver": RANDOM_VER} if aid == "random" else {})}
+            "ai": {"done": [], "attempts": {}, "rounds": [], "last_error": None}, **({"ver": RANDOM_VER} if aid == "random" else {}),
+            **({"instant": True} if aid == "ai_aggr" else {})}
 
 def migrate(state):
     """In-place upgrades that do not need a full restart. Random control v2: replaces the (idle, all-cash) v1 account."""
+    if "ai_aggr" not in state["accounts"]:                      # account E is added to a running experiment
+        state["accounts"]["ai_aggr"] = new_account("ai_aggr")
     r = state["accounts"].get("random")
     if r is not None and r.get("ver") != RANDOM_VER and not r["trades"]:
         state["accounts"]["random"] = new_account("random")
@@ -247,7 +260,10 @@ def exec_sell(acct, o, price, ts):
     fee = sell_fees(pos["shares"], gross)
     proceeds = gross - fee
     acct["fees_paid"] = round(acct.get("fees_paid", 0) + fee, 2)
-    acct["unsettled"].append({"amount": proceeds, "avail": next_trading_day(et_date(ts))})
+    if acct.get("instant"):                                     # experimental account E: sale proceeds are reusable at once
+        acct["cash"] += proceeds
+    else:
+        acct["unsettled"].append({"amount": proceeds, "avail": next_trading_day(et_date(ts))})
     days = (datetime.fromisoformat(et_date(ts)) - datetime.fromisoformat(et_date(pos["entry"]))).days
     cost = pos["shares"] * pos["avg_cost"]
     acct["trades"].append({"id": len(acct["trades"]), "time": ts, "side": "SELL", "symbol": sym,
@@ -259,7 +275,7 @@ def exec_sell(acct, o, price, ts):
 
 def fill_pending(acct, prices, fresh, ts):
     keep = []
-    for o in acct["pending"]:
+    for o in sorted(acct["pending"], key=lambda o: o["side"] != "SELL"):      # sells first so instant-settlement cash can fund the buys
         sym = o["symbol"]
         if sym not in fresh:
             keep.append(o); continue
@@ -436,7 +452,7 @@ def decide_ai(acct, env, p):
         px = closes[sym][-1]
         pos["peak"] = max(pos["peak"], px)
         reason = None
-        if px <= pos["avg_cost"] * (1 - p["stop"]):
+        if p["stop"] and px <= pos["avg_cost"] * (1 - p["stop"]):
             reason = K("r.code_stop", p=f"{p['stop']:.0%}")
         elif p["flatten"] and hm >= p["flatten"]:
             reason = K("r.code_flatten")
@@ -455,6 +471,11 @@ def decide_ai(acct, env, p):
     key = f"{today}@{rt[0]:02d}:{rt[1]:02d}"
     if key in st["done"] or st["attempts"].get(key, 0) >= 2:
         return
+    if p.get("budget"):                                          # E only uses what is left of the free AI quota
+        if not env["budget_ok"]():
+            st["paused"] = f"{ts[:16]} daily AI budget reached"
+            return
+        st["paused"] = None
     news = env["news"](p["news_age"])
     pend = {o["symbol"] for o in acct["pending"]}
     eq = equity_of(acct, prices)
@@ -462,10 +483,17 @@ def decide_ai(acct, env, p):
                   "pnl_pct": prices.get(s, x["avg_cost"]) / x["avg_cost"] - 1,
                   "held_days": (datetime.fromisoformat(today) - datetime.fromisoformat(et_date(x["entry"]))).days}
                  for s, x in pos_map.items()]
-    rules = ["long-only, fractional shares", f"min {p['min_hold']} day hold before selling" if p["min_hold"] else "same-day exits allowed",
-             f"max {p['max_buys']} new buys per review", f"code force-sells at -{p['stop']:.0%} loss"]
-    if p["horizon"] == "short":
+    rules = ["long-only, fractional shares", f"min {p['min_hold']} day hold before selling" if p["min_hold"] else "same-day exits allowed"]
+    if p["max_buys"] < 50:
+        rules.append(f"max {p['max_buys']} new buys per review")
+    if p["stop"]:
+        rules.append(f"code force-sells at -{p['stop']:.0%} loss")
+    if p["max_pos"] >= 50:
+        rules.append("no fixed limit on the number of positions or on how many names you buy")
+    if p["horizon"] in ("short", "aggr"):
         rules.append("positions MAY be held overnight (gap risk); the 15:30 ET review is the last chance to trade today; no new buys after 15:45 ET")
+    if acct.get("instant"):
+        rules.append("sale proceeds are available immediately for new buys, so you can rotate within a review")
     payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq,
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
                "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "news": news}
@@ -483,9 +511,12 @@ def decide_ai(acct, env, p):
     h["last_ok"], h["last_error"], st["last_error"] = ts, None, None
     nid = {n["id"]: n for n in news}
     avail = max(acct["cash"] - committed(acct), 0)
+    if acct.get("instant"):                                      # proceeds of sells already queued (by code) will be usable by the buys
+        avail += sum(x["shares"] * prices.get(s, x["avg_cost"]) * (1 - SLIPPAGE) for s, x in pos_map.items() if s in pend)
     n_pos = len(pos_map) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
     buys, summary, round_decs, norders = 0, ml(data.get("summary", ""), 160), [], 0
-    for d in (data.get("decisions") or [])[:30]:
+    decisions = sorted((data.get("decisions") or [])[:30], key=lambda d: str(d.get("action", "")).upper() != "SELL")   # sells first
+    for d in decisions:
         sym, act = str(d.get("symbol", "")).upper(), str(d.get("action", "")).upper()
         reason = ml(d.get("reason", ""), 200)
         bull = ml(d.get("bull"), 160) if d.get("bull") else None
@@ -515,7 +546,7 @@ def decide_ai(acct, env, p):
                 e["note"] = K("n.maxbuys")
             elif p["no_new_after"] and hm >= p["no_new_after"]:
                 e["note"] = K("n.late")
-            elif sym in traded_today(acct, today) and p["horizon"] == "short":
+            elif sym in traded_today(acct, today) and not p.get("reentry"):
                 e["note"] = K("n.traded")
             else:
                 try:
@@ -527,7 +558,7 @@ def decide_ai(acct, env, p):
                     e["note"] = K("n.cash")
                 else:
                     chk = [{"text": K("c.ai_reason", why=reason, conf=f"{conf:.0%}"), "ok": True},
-                           {"text": K("c.code_ok_buy", w=f"{dollars / eq:.0%}", cap=f"{p['cap']:.0%}", n=n_pos + 1, maxn=p["max_pos"], dollars=f"${dollars:.0f}"), "ok": True}]
+                           {"text": K("c.code_ok_buy", w=f"{dollars / eq:.0%}", cap=f"{p['cap']:.0%}", n=n_pos + 1, maxn="∞" if p["max_pos"] >= 50 else p["max_pos"], dollars=f"${dollars:.0f}"), "ok": True}]
                     if bad_ids:
                         chk.append({"text": K("c.bad_ids", ids=", ".join(bad_ids)), "ok": False})
                     queue(acct, "BUY", sym, ts, px, K("r.ai_buy", why=reason),
@@ -549,6 +580,8 @@ def decide_ai(acct, env, p):
                 queue(acct, "SELL", sym, ts, px, K("r.ai_sell", why=reason),
                       {"checks": chk, "ind": snap(closes[sym]), "ai": ai_info, "news": news_info})
                 norders += 1; e["applied"] = True
+                if acct.get("instant"):
+                    avail += x["shares"] * px * (1 - SLIPPAGE)
         try:
             learn.record_signal(env["state"], acct["kind"], sym, act, conf, e["applied"], px, ts)
         except Exception:
@@ -574,7 +607,8 @@ def decide_ai(acct, env, p):
 KIND = {"rule_long": decide_rule_long, "rule_short": decide_rule_short, "spy": decide_spy,
         "equal": decide_equal, "random": decide_random,
         "ai_long": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_long"]),
-        "ai_short": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_short"])}
+        "ai_short": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_short"]),
+        "ai_aggr": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_aggr"])}
 
 
 def compact_equity(acct, now_ts, keep_days=7):
@@ -622,7 +656,12 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None):
     for s, c in closes.items():
         intra["px"].setdefault(s, []).append(round(c[-1], 4))
         del intra["px"][s][:-30]
-    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai, "intraday": intra["px"], "state": state,
+    def budget_ok():
+        u = state.setdefault("ai_usage", {})
+        used = u.get(today, 0) + getattr(ai, "http_calls", 0)
+        cap = (u["limit_hint"] - E_RESERVE) if u.get("limit_hint") else E_DEFAULT_CAP
+        return used < cap
+    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai, "intraday": intra["px"], "state": state, "budget_ok": budget_ok,
            "health_ai": state["health"].setdefault("ai", {})}
     for aid, acct in state["accounts"].items():
         settle(acct, ts)
@@ -694,6 +733,19 @@ def sane(sym, d, now):
         return f"{sym}: anomalous jump {c[-1] / c[-2] - 1:+.0%}, skipped"
     return None
 
+def record_usage(state, client, ts):
+    """Counts HTTP calls made to the AI per day; remembers the day's quota ceiling if the provider reports one."""
+    if client is None:
+        return
+    u, today = state.setdefault("ai_usage", {}), et_date(ts)
+    n = getattr(client, "http_calls", 0)
+    if n:
+        u[today] = u.get(today, 0) + n
+    if getattr(client, "daily_quota_hit", False):
+        u["limit_hint"] = u.get(today, 0)
+    for k in sorted(k for k in u if k != "limit_hint")[:-30]:
+        del u[k]
+
 def load_state():
     if os.path.exists(STATE_PATH):
         with open(STATE_PATH) as f:
@@ -725,6 +777,7 @@ def run_live():
                     state.get("learn", {}).get("errors", {}).clear()
                 client = aimod.Client(pinned=h.setdefault("ai", {}).setdefault("pinned", {}))
                 learn.post_close(state, client if client.providers else None, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), NAMES, UNIVERSE)
+                record_usage(state, client, ts)
                 save_state(state)
                 print("post-close learning pass done.")
             else:
@@ -759,6 +812,7 @@ def run_live():
                 a["ai"]["attempts"] = {}
         apply_events(state, evmap, now.timestamp())
         step(state, closes, ctx, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), client if client.providers else None)
+        record_usage(state, client, ts)
         h["ai"]["configured"] = client.names()
         h.update(last_ok=ts, last_error="; ".join(notes) or None, fail_count=0)
         print("ok", {k: a["equity"][-1]["equity"] for k, a in state["accounts"].items()}, notes)
