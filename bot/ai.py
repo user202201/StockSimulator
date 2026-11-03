@@ -89,11 +89,28 @@ class Client:
                     p["model"] = preferred
                     raise RuntimeError("; ".join(tried))
 
-    def _candidates(self, p):
+    def second_opinion(self, messages, primary_model, payload=None):
+        """A second analyst: same prompt, a different model. Informational only, never traded on."""
+        for p in self.providers:
+            if p["name"] != "gemini":
+                continue
+            try:
+                alts = [m for m in self._candidates(p, include_lite=True) if m != primary_model]
+            except Exception:
+                continue
+            for m in alts[:2]:
+                q = dict(p); q["model"] = m
+                try:
+                    return self._call(q, messages), m
+                except ApiError:
+                    continue
+        return None, None
+
+    def _candidates(self, p, include_lite=False):
         url = p["url"].rsplit("/chat/completions", 1)[0] + "/models"
         data = self._open(urllib.request.Request(url, headers={"Authorization": "Bearer " + p["key"]}), timeout=30)
         ids = [str(x.get("id", "")).replace("models/", "") for x in data.get("data", [])]
-        bad = ("lite", "image", "tts", "live", "audio", "embed", "robotics", "computer", "vision", "exp")
+        bad = ("image", "tts", "live", "audio", "embed", "robotics", "computer", "vision", "exp") + (() if include_lite else ("lite",))
         flash = [i for i in ids if "flash" in i and not any(b in i for b in bad)]
         stable = [i for i in flash if "preview" not in i] + [i for i in flash if "preview" in i]
         ver = lambda s: [float(x) for x in re.findall(r"\d+(?:\.\d+)?", s)] or [0]
@@ -119,7 +136,7 @@ class Client:
     def _call(self, p, messages):
         extras = {"reasoning_effort": "low"} if p["name"] == "gemini" else {}   # thinking models can take minutes otherwise
         for attempt in range(3):
-            body = json.dumps({"model": p["model"], "messages": messages, "temperature": 0, "max_tokens": 3000, **extras}).encode()
+            body = json.dumps({"model": p["model"], "messages": messages, "temperature": 0, "max_tokens": 4096, **extras}).encode()
             req = urllib.request.Request(p["url"], data=body, headers={
                 "Content-Type": "application/json", "Authorization": "Bearer " + p["key"]})
             try:
@@ -144,10 +161,13 @@ You decide using ONLY the data given in the user message: prices/indicators and 
 Hard rules enforced by code (violations are rejected): max positions, per-position weight cap, long-only, symbols must come from the given list.
 Be selective: HOLD / do nothing is a valid and often best answer. Do not trade just to trade. Every BUY/SELL must have a concrete reason.
 Cite supporting headlines by id (e.g. "N3") in headline_ids when news influenced the decision; never invent ids.
-Reply with ONE JSON object only, no markdown, in exactly this shape. All free text must be given in THREE languages (en, fr, zh = Simplified Chinese), each concise:
-{"summary": {"en": "<=80 chars market view", "fr": "...", "zh": "..."},
+Before deciding on any BUY, write the strongest argument FOR it (bull) and the strongest argument AGAINST it (bear). If the bear case is at least as strong as the bull case, do NOT buy.
+Reply with ONE JSON object only, no markdown, in exactly this shape. All free text must be given in THREE languages (en, fr, zh = Simplified Chinese), each concise (<=100 chars per field):
+{"summary": {"en": "market view", "fr": "...", "zh": "..."},
  "decisions": [{"symbol": "NVDA", "action": "BUY|SELL|HOLD", "weight": 0.15, "confidence": 0.0-1.0,
-                "reason": {"en": "<=100 chars", "fr": "...", "zh": "..."}, "headline_ids": ["N3"]}]}
+                "bull": {"en": "strongest case for", "fr": "...", "zh": "..."},
+                "bear": {"en": "strongest case against", "fr": "...", "zh": "..."},
+                "reason": {"en": "final reason", "fr": "...", "zh": "..."}, "headline_ids": ["N3"]}]}
 Only list symbols you want to BUY or SELL (plus HOLD for held positions you reviewed). weight = fraction of total equity for BUY."""
 
 HORIZON = {
@@ -188,8 +208,10 @@ def build_messages(payload):
 
 
 class MockClient:
-    """Offline demo only: a transparent heuristic that mimics the AI's output format."""
+    """Offline demo only: transparent heuristics that mimic the AI's output formats."""
     providers = [{"name": "demo-mock", "model": "heuristic"}]
+    TYPES = ("earnings", "product", "analyst", "regulatory", "mna", "macro", "legal", "other")
+    VERDICTS = ("good_call", "bad_call", "lucky", "unlucky", "neutral")
 
     def __init__(self, seed=3):
         self.r = random.Random(seed)
@@ -197,7 +219,30 @@ class MockClient:
     def names(self):
         return ["demo-mock/heuristic"]
 
+    def _ml(self, en, fr, zh):
+        return {"en": en, "fr": fr, "zh": zh}
+
     def decide(self, messages, payload=None):
+        meta = {"provider": "demo-mock", "model": "heuristic", "fallback_errors": []}
+        task = (payload or {}).get("task")
+        if task == "newstag":
+            return json.dumps({"items": [{"id": h["id"], "type": self.r.choice(self.TYPES), "sent": self.r.choice((-1, 0, 1)),
+                                          "imp": self.r.choice((1, 2, 3))} for h in payload["headlines"]]}), meta
+        if task == "postmortem":
+            return json.dumps({"reviews": [{"key": x["key"], "verdict": self.r.choice(self.VERDICTS),
+                "review": self._ml("(demo) The trade followed its rules; the outcome was mostly driven by the market's move that day.",
+                                   "(démo) Le trade a suivi ses règles ; le résultat dépend surtout du mouvement du marché ce jour-là.",
+                                   "（演示）这笔交易按规则执行，结果主要由当天大盘走势决定。"),
+                "takeaway": self._ml("Judge decisions by process, not by one result.", "Jugez le processus, pas un seul résultat.", "要看决策过程，而不是单次结果。")}
+                for x in payload["trades"]]}), meta
+        if task == "digest":
+            mv = payload.get("movers", [])[:3]
+            return json.dumps({"headline": self._ml("(demo) A mixed day led by tech moves", "(démo) Séance contrastée menée par la tech", "（演示）科技股带动、走势分化的一天"),
+                "bullets": [self._ml("(demo) Large-cap tech moved most; the index finished near flat.", "(démo) Les grandes valeurs tech ont le plus bougé ; l'indice termine proche de l'équilibre.", "（演示）大型科技股波动最大，指数收盘接近持平。"),
+                            self._ml("(demo) Our traders reacted differently to the same prices.", "(démo) Nos traders ont réagi différemment aux mêmes cours.", "（演示）面对同样的价格，几位交易员的反应不同。")],
+                "movers": [{"symbol": m["symbol"], "why": self._ml("(demo) No clear news; likely sector flow.", "(démo) Pas de nouvelle claire ; probablement un flux sectoriel.", "（演示）没有明确新闻，可能是板块资金流动。")} for m in mv],
+                "lesson": {"topic": self.r.choice(payload["topics"]), "title": self._ml("(demo) Today's concept", "(démo) Notion du jour", "（演示）今日概念"),
+                           "body": self._ml("(demo) This concept showed up in today's data; see the glossary for the full explanation.", "(démo) Cette notion apparaît dans les données du jour ; voir le glossaire.", "（演示）这个概念出现在今天的数据里，完整解释见词典。")}}), meta
         p, decs, short = payload, [], payload["horizon"] == "short"
         by_sym = {}
         for n in p["news"]:
@@ -205,7 +250,8 @@ class MockClient:
         for x in p["positions"]:
             if x["pnl_pct"] < (-0.008 if short else -0.04) or x["pnl_pct"] > (0.012 if short else 0.07):
                 decs.append({"symbol": x["symbol"], "action": "SELL", "weight": 0, "confidence": 0.6,
-                             "reason": {"en": "Target reached or drawdown control", "fr": "Objectif atteint ou contrôle du repli", "zh": "达到目标收益或需要控制回撤"}, "headline_ids": by_sym.get(x["symbol"], [])[:1]})
+                             "bull": self._ml("Target nearly reached", "Objectif presque atteint", "接近目标"), "bear": self._ml("Could run further", "Pourrait aller plus loin", "可能还会继续涨"),
+                             "reason": self._ml("Target reached or drawdown control", "Objectif atteint ou contrôle du repli", "达到目标收益或需要控制回撤"), "headline_ids": by_sym.get(x["symbol"], [])[:1]})
         held = {x["symbol"] for x in p["positions"]}
         key = (lambda r: (r["vs_open"] or 0)) if short else (lambda r: -(r["mom60"] or 0))
         picks = [r for r in sorted(p["market"], key=key) if r["symbol"] not in held and (r["rsi"] or 50) < 70
@@ -213,8 +259,19 @@ class MockClient:
         for r in picks:
             if self.r.random() < (0.7 if short else 0.5):
                 decs.append({"symbol": r["symbol"], "action": "BUY", "weight": 0.15, "confidence": round(self.r.uniform(.5, .8), 2),
+                             "bull": self._ml("Trend and news both supportive", "Tendance et actualité favorables", "趋势和消息面都支持"),
+                             "bear": self._ml("Valuation and a possible market dip", "Valorisation et repli possible du marché", "估值偏高、大盘可能回调"),
                              "reason": ({"en": "Bounce after an intraday pullback", "fr": "Rebond après un repli intrajournalier", "zh": "日内回调后的反弹机会"} if short else
-                              {"en": "Uptrend with supportive news flow", "fr": "Tendance haussière et actualité favorable", "zh": "趋势向上且消息面偏正面"}),
+                                        {"en": "Uptrend with supportive news flow", "fr": "Tendance haussière et actualité favorable", "zh": "趋势向上且消息面偏正面"}),
                              "headline_ids": by_sym.get(r["symbol"], [])[:2]})
-        return json.dumps({"summary": {"en": "(demo) simple rules mimicking an AI answer", "fr": "(démo) règles simples imitant une IA", "zh": "（演示）按简单规则模拟 AI 输出"}, "decisions": decs}, ensure_ascii=False), \
-            {"provider": "demo-mock", "model": "heuristic", "fallback_errors": []}
+        return json.dumps({"summary": self._ml("(demo) simple rules mimicking an AI answer", "(démo) règles simples imitant une IA", "（演示）按简单规则模拟 AI 输出"), "decisions": decs}, ensure_ascii=False), meta
+
+    def second_opinion(self, messages, primary_model, payload=None):
+        txt, _ = self.decide(messages, payload)
+        data = json.loads(txt)
+        data["decisions"] = [d for d in data["decisions"] if self.r.random() < 0.7]
+        if payload and payload["market"] and self.r.random() < 0.5:
+            r = self.r.choice(payload["market"])
+            data["decisions"].append({"symbol": r["symbol"], "action": "BUY", "weight": 0.1, "confidence": 0.55,
+                                      "reason": self._ml("A different view on the same data", "Un autre regard sur les mêmes données", "对同样数据的不同看法"), "headline_ids": []})
+        return json.dumps(data, ensure_ascii=False), "heuristic-b"

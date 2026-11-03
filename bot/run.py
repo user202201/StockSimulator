@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai as aimod
 import news as newsmod
+import learn
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_PATH = os.environ.get("STATE_PATH") or os.path.join(ROOT, "docs", "data", "state.json")
@@ -486,7 +487,9 @@ def decide_ai(acct, env, p):
     for d in (data.get("decisions") or [])[:30]:
         sym, act = str(d.get("symbol", "")).upper(), str(d.get("action", "")).upper()
         reason = ml(d.get("reason", ""), 200)
-        e = {"symbol": sym, "action": act, "reason": reason, "applied": False, "note": None}
+        bull = ml(d.get("bull"), 160) if d.get("bull") else None
+        bear = ml(d.get("bear"), 160) if d.get("bear") else None
+        e = {"symbol": sym, "action": act, "reason": reason, "bull": bull, "bear": bear, "applied": False, "note": None}
         round_decs.append(e)
         if sym not in UNIVERSE or sym not in closes or act not in ("BUY", "SELL", "HOLD"):
             e["note"] = K("n.invalid"); continue
@@ -499,7 +502,7 @@ def decide_ai(acct, env, p):
         cited = [nid[i] for i in (d.get("headline_ids") or []) if i in nid]
         bad_ids = [i for i in (d.get("headline_ids") or []) if i not in nid]
         ai_info = {"provider": meta["provider"], "model": meta["model"], "confidence": conf, "summary": summary, "round": key,
-                   "unverified_ids": bad_ids}
+                   "unverified_ids": bad_ids, "bull": bull, "bear": bear}
         news_info = [{"id": n["id"], "sym": n["sym"], "title": n["title"], "src": n["src"], "age_h": round(n["age_h"], 1)} for n in cited]
         px = closes[sym][-1]
         if act == "BUY":
@@ -545,10 +548,24 @@ def decide_ai(acct, env, p):
                 queue(acct, "SELL", sym, ts, px, K("r.ai_sell", why=reason),
                       {"checks": chk, "ind": snap(closes[sym]), "ai": ai_info, "news": news_info})
                 norders += 1; e["applied"] = True
+        try:
+            learn.record_signal(env["state"], acct["kind"], sym, act, conf, e["applied"], px, ts)
+        except Exception:
+            pass
     st["done"].append(key)
     st["rounds"].append({"time": ts, "round": key, "provider": meta["provider"], "model": meta["model"], "summary": summary,
                          "decisions": round_decs, "orders": norders, "news_count": len(news)})
     st["rounds"] = st["rounds"][-40:]
+    if p["horizon"] == "long" and hasattr(env["ai"], "second_opinion"):      # a second analyst (other model) for comparison; never traded on
+        try:
+            raw2, m2 = env["ai"].second_opinion(messages, meta["model"], payload)
+            if raw2:
+                d2 = aimod.extract_json(raw2)
+                st["rounds"][-1]["second"] = {"model": m2, "summary": ml(d2.get("summary"), 160),
+                    "decisions": [{"symbol": str(x.get("symbol", "")).upper(), "action": str(x.get("action", "")).upper(), "reason": ml(x.get("reason"), 160)}
+                                  for x in (d2.get("decisions") or [])[:12] if str(x.get("action", "")).upper() in ("BUY", "SELL", "HOLD")]}
+        except Exception:
+            pass
     log_decision({"time": ts, "account": acct["name"], "round": key, "provider": meta["provider"], "model": meta["model"],
                   "fallback_errors": meta.get("fallback_errors"), "prompt": messages[1]["content"], "raw_response": raw,
                   "decisions": round_decs, "headlines": [{k: n[k] for k in ("id", "sym", "title", "src")} for n in news]})
@@ -604,7 +621,7 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None):
     for s, c in closes.items():
         intra["px"].setdefault(s, []).append(round(c[-1], 4))
         del intra["px"][s][:-30]
-    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai, "intraday": intra["px"],
+    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai, "intraday": intra["px"], "state": state,
            "health_ai": state["health"].setdefault("ai", {})}
     for aid, acct in state["accounts"].items():
         settle(acct, ts)
@@ -701,7 +718,17 @@ def run_live():
     try:
         spy = fetch(BENCH)
         if not session_open(spy["meta"], now.timestamp()) and "--force" not in sys.argv:
-            print("US market closed or quote stale; nothing to do."); return
+            et = now.astimezone(NY)
+            if et.weekday() < 5 and (16, 0) <= (et.hour, et.minute) < (20, 0) and state.get("updated") and et_date(state["updated"]) == et.date().isoformat():
+                if os.environ.get("RETRY_AI"):
+                    state.get("learn", {}).get("errors", {}).clear()
+                client = aimod.Client(pinned=h.setdefault("ai", {}).setdefault("pinned", {}))
+                learn.post_close(state, client if client.providers else None, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), NAMES, UNIVERSE)
+                save_state(state)
+                print("post-close learning pass done.")
+            else:
+                print("US market closed or quote stale; nothing to do.")
+            return
         h["last_attempt"] = ts
         def f(s):
             try:
@@ -786,6 +813,12 @@ def run_demo(days=40):
                 return [{"sym": s, "title": r.choice(TEMPLATES).format(n=NAMES[s]), "src": "Demo Wire",
                          "ts": t.timestamp() - r.uniform(0, 6) * 3600} for s in UNIVERSE if r.random() < 0.5]
             step(state, closes, ctx, ts, fake_news, client)
+        close_t = datetime(day.year, day.month, day.day, 16, 5, tzinfo=NY).astimezone(timezone.utc)
+        def close_news(t=close_t):
+            r = random.Random(t.isoformat())
+            return [{"sym": s, "title": r.choice(TEMPLATES).format(n=NAMES[s]) + f" ({r.randint(1, 999)})", "src": "Demo Wire", "ts": t.timestamp() - r.uniform(0, 20) * 3600}
+                    for s in UNIVERSE if r.random() < 0.6]
+        learn.post_close(state, client, close_t.strftime("%Y-%m-%dT%H:%M:%SZ"), close_news, NAMES, UNIVERSE)
         for s in UNIVERSE:
             hist[s].append(paths[s][N])
     state["health"].update(last_ok=state["updated"], last_attempt=state["updated"])

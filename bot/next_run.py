@@ -6,6 +6,6 @@ from zoneinfo import ZoneInfo
 now = datetime.now(ZoneInfo("America/New_York"))
 if now.weekday() >= 5:
     print("stop"); raise SystemExit
-close = now.replace(hour=16, minute=5, second=0, microsecond=0)
+close = now.replace(hour=16, minute=20, second=0, microsecond=0)
 nxt = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=(now.minute // 15 + 1) * 15, seconds=45)
 print("stop" if nxt > close else int((nxt - now).total_seconds()))
