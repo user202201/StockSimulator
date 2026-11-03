@@ -14,7 +14,7 @@ stale / anomalous quote protection, long-only, fractional shares.
 
   python bot/run.py          live      python bot/run.py --demo   offline demo with synthetic data
 """
-import json, math, os, random, sys, urllib.request
+import copy, json, math, os, random, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -210,7 +210,14 @@ def new_account(aid):
 
 def migrate(state):
     """In-place upgrades that do not need a full restart. Random control v2: replaces the (idle, all-cash) v1 account."""
-    if "ai_aggr" not in state["accounts"]:                      # account E is added to a running experiment
+    e, d = state["accounts"].get("ai_aggr"), state["accounts"].get("ai_short")
+    if d is not None and d["equity"] and (e is None or (not e["trades"] and e.get("cloned_from") != "ai_short")):
+        # Account E starts as a perfect copy of D's whole history (trades, equity curve, cash, positions) and diverges from the next run on
+        c = ACCOUNTS["ai_aggr"]
+        clone = copy.deepcopy(d)
+        clone.update(name=c["name"], kind=c["kind"], style=c["style"], freq=c["freq"], desc=c["desc"], rules=c["rules"], instant=True, cloned_from="ai_short")
+        state["accounts"]["ai_aggr"] = clone
+    elif e is None:                                             # nothing to clone yet
         state["accounts"]["ai_aggr"] = new_account("ai_aggr")
     r = state["accounts"].get("random")
     if r is not None and r.get("ver") != RANDOM_VER and not r["trades"]:
