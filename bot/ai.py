@@ -144,10 +144,10 @@ You decide using ONLY the data given in the user message: prices/indicators and 
 Hard rules enforced by code (violations are rejected): max positions, per-position weight cap, long-only, symbols must come from the given list.
 Be selective: HOLD / do nothing is a valid and often best answer. Do not trade just to trade. Every BUY/SELL must have a concrete reason.
 Cite supporting headlines by id (e.g. "N3") in headline_ids when news influenced the decision; never invent ids.
-Reply with ONE JSON object only, no markdown, in exactly this shape:
-{"summary": "<=80 chars Simplified Chinese market view",
+Reply with ONE JSON object only, no markdown, in exactly this shape. All free text must be given in THREE languages (en, fr, zh = Simplified Chinese), each concise:
+{"summary": {"en": "<=80 chars market view", "fr": "...", "zh": "..."},
  "decisions": [{"symbol": "NVDA", "action": "BUY|SELL|HOLD", "weight": 0.15, "confidence": 0.0-1.0,
-                "reason": "<=100 chars Simplified Chinese", "headline_ids": ["N3"]}]}
+                "reason": {"en": "<=100 chars", "fr": "...", "zh": "..."}, "headline_ids": ["N3"]}]}
 Only list symbols you want to BUY or SELL (plus HOLD for held positions you reviewed). weight = fraction of total equity for BUY."""
 
 HORIZON = {
@@ -205,7 +205,7 @@ class MockClient:
         for x in p["positions"]:
             if x["pnl_pct"] < (-0.008 if short else -0.04) or x["pnl_pct"] > (0.012 if short else 0.07):
                 decs.append({"symbol": x["symbol"], "action": "SELL", "weight": 0, "confidence": 0.6,
-                             "reason": "达到目标收益或需要控制回撤", "headline_ids": by_sym.get(x["symbol"], [])[:1]})
+                             "reason": {"en": "Target reached or drawdown control", "fr": "Objectif atteint ou contrôle du repli", "zh": "达到目标收益或需要控制回撤"}, "headline_ids": by_sym.get(x["symbol"], [])[:1]})
         held = {x["symbol"] for x in p["positions"]}
         key = (lambda r: (r["vs_open"] or 0)) if short else (lambda r: -(r["mom60"] or 0))
         picks = [r for r in sorted(p["market"], key=key) if r["symbol"] not in held and (r["rsi"] or 50) < 70
@@ -213,7 +213,8 @@ class MockClient:
         for r in picks:
             if self.r.random() < (0.7 if short else 0.5):
                 decs.append({"symbol": r["symbol"], "action": "BUY", "weight": 0.15, "confidence": round(self.r.uniform(.5, .8), 2),
-                             "reason": ("日内回调后的反弹机会" if short else "趋势向上且消息面偏正面"),
+                             "reason": ({"en": "Bounce after an intraday pullback", "fr": "Rebond après un repli intrajournalier", "zh": "日内回调后的反弹机会"} if short else
+                              {"en": "Uptrend with supportive news flow", "fr": "Tendance haussière et actualité favorable", "zh": "趋势向上且消息面偏正面"}),
                              "headline_ids": by_sym.get(r["symbol"], [])[:2]})
-        return json.dumps({"summary": "（演示）按简单规则模拟 AI 输出", "decisions": decs}, ensure_ascii=False), \
+        return json.dumps({"summary": {"en": "(demo) simple rules mimicking an AI answer", "fr": "(démo) règles simples imitant une IA", "zh": "（演示）按简单规则模拟 AI 输出"}, "decisions": decs}, ensure_ascii=False), \
             {"provider": "demo-mock", "model": "heuristic", "fallback_errors": []}

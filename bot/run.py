@@ -94,6 +94,17 @@ ACCOUNTS = {
 
 
 # ---------- helpers ----------
+def K(k, **a):
+    """Translatable text: the dashboard renders key k with args a in the viewer's language."""
+    return {"k": k, "a": a}
+
+def ml(x, n=200):
+    """Normalise AI free text: dict {zh,en,fr} (preferred) or plain string."""
+    if isinstance(x, dict):
+        out = {k: str(v)[:n] for k, v in x.items() if k in ("zh", "en", "fr") and v}
+        return out or {"en": ""}
+    return {"en": str(x or "")[:n]}
+
 def cent_up(x):
     return math.ceil(round(x * 100, 6)) / 100
 
@@ -157,22 +168,22 @@ def entry_checks(c, spy, score, rank, slots):
     s20, s50, r, p = sma(c, 20), sma(c, 50), rsi(c), c[-1]
     mom20, spy200 = p / c[-21] - 1, sma(spy, 200)
     return [
-        {"text": f"现价 ${p:.2f} {'>' if p > s50 else '≤'} 50日均线 ${s50:.2f}", "ok": p > s50},
-        {"text": f"20日均线 ${s20:.2f} {'>' if s20 > s50 else '≤'} 50日均线 ${s50:.2f}（短期强于中期）", "ok": s20 > s50},
-        {"text": f"20日动量 {mom20:+.1%}（需为正）", "ok": mom20 > 0},
-        {"text": f"RSI {r:.0f}（需 < 75，避免追高）", "ok": r < 75},
-        {"text": f"大盘 SPY ${spy[-1]:.2f} {'>' if spy[-1] > spy200 else '≤'} 200日均线 ${spy200:.2f}（牛市过滤）", "ok": spy[-1] > spy200},
-        {"text": f"候选中 60日动量排第 {rank} 位（{score:+.1%}），剩余仓位名额 {slots}", "ok": True},
+        {"text": K("c.price_sma50", p=f"${p:.2f}", op=">" if p > s50 else "≤", s=f"${s50:.2f}"), "ok": p > s50},
+        {"text": K("c.sma20_sma50", a=f"${s20:.2f}", op=">" if s20 > s50 else "≤", b=f"${s50:.2f}"), "ok": s20 > s50},
+        {"text": K("c.mom20", v=f"{mom20:+.1%}"), "ok": mom20 > 0},
+        {"text": K("c.rsi", v=f"{r:.0f}"), "ok": r < 75},
+        {"text": K("c.spy200", p=f"${spy[-1]:.2f}", op=">" if spy[-1] > spy200 else "≤", m=f"${spy200:.2f}"), "ok": spy[-1] > spy200},
+        {"text": K("c.rank", rank=rank, score=f"{score:+.1%}", slots=slots), "ok": True},
     ]
 
 def exit_check(pos, c):
     p = c[-1]
     pos["peak"] = max(pos["peak"], p)
     hard, trail, s50 = pos["avg_cost"] * (1 - A_HARD_STOP), pos["peak"] * (1 - A_TRAIL), sma(c, 50)
-    rules = [("硬止损 -7%", p <= hard, f"现价 ${p:.2f} {'≤' if p <= hard else '>'} 硬止损线 ${hard:.2f}（成本 ${pos['avg_cost']:.2f} 的 -7%）"),
-             ("回撤止盈 -8%", p <= trail, f"现价 ${p:.2f} {'≤' if p <= trail else '>'} 回撤线 ${trail:.2f}（持仓最高 ${pos['peak']:.2f} 的 -8%）"),
-             ("跌破50日均线", p < s50, f"现价 ${p:.2f} {'<' if p < s50 else '≥'} 50日均线 ${s50:.2f}")]
-    return next((n for n, hit, _ in rules if hit), None), [{"text": t, "ok": h} for _, h, t in rules]
+    rules = [("r.hard_stop", p <= hard, K("c.hard", p=f"${p:.2f}", op="≤" if p <= hard else ">", lvl=f"${hard:.2f}", cost=f"${pos['avg_cost']:.2f}")),
+             ("r.trail_stop", p <= trail, K("c.trail", p=f"${p:.2f}", op="≤" if p <= trail else ">", lvl=f"${trail:.2f}", peak=f"${pos['peak']:.2f}")),
+             ("r.below_sma50", p < s50, K("c.sma50_exit", p=f"${p:.2f}", op="<" if p < s50 else "≥", s=f"${s50:.2f}"))]
+    return next((K(n) for n, hit, _ in rules if hit), None), [{"text": txt, "ok": h} for _, h, txt in rules]
 
 
 # ---------- accounts / engine ----------
@@ -282,7 +293,7 @@ def decide_rule_long(acct, env):
         dollars = min(eq * A_WEIGHT, acct["cash"] - committed(acct))
         if dollars < 50:
             break
-        queue(acct, "BUY", sym, ts, closes[sym][-1], f"上升趋势，60日动量 {score:+.1%}",
+        queue(acct, "BUY", sym, ts, closes[sym][-1], K("r.uptrend", m=f"{score:+.1%}"),
               {"checks": entry_checks(closes[sym], closes[BENCH], score, rank, A_MAX_POS - n), "ind": snap(closes[sym]),
                "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
         n += 1
@@ -297,11 +308,11 @@ def decide_rule_short(acct, env):
         p = closes[sym][-1]
         pos["peak"] = max(pos["peak"], p)
         gain = p / pos["avg_cost"] - 1
-        reason = ("止盈 +1.0%" if gain >= B_TP else "止损 -0.8%" if gain <= -B_SL else
-                  "收盘前清仓" if hm >= FLATTEN_AT else None)
+        reason = (K("r.tp") if gain >= B_TP else K("r.sl") if gain <= -B_SL else
+                  K("r.flatten") if hm >= FLATTEN_AT else None)
         if reason:
-            checks = [{"text": f"相对成本 ${pos['avg_cost']:.2f} 的涨跌 {gain:+.2%}（止盈 +{B_TP:.1%} / 止损 -{B_SL:.1%}）", "ok": abs(gain) >= min(B_TP, B_SL)},
-                      {"text": f"美东 {hm[0]:02d}:{hm[1]:02d}（{FLATTEN_AT[0]}:{FLATTEN_AT[1]} 起收盘前清仓）", "ok": hm >= FLATTEN_AT}]
+            checks = [{"text": K("c.gain", cost=f"${pos['avg_cost']:.2f}", g=f"{gain:+.2%}", tp=f"{B_TP:.1%}", sl=f"{B_SL:.1%}"), "ok": abs(gain) >= min(B_TP, B_SL)},
+                      {"text": K("c.time", hm=f"{hm[0]:02d}:{hm[1]:02d}", flat=f"{FLATTEN_AT[0]}:{FLATTEN_AT[1]}"), "ok": hm >= FLATTEN_AT}]
             queue(acct, "SELL", sym, ts, p, reason, {"checks": checks, "ind": snap(closes[sym])})
     if not (INTRADAY_WINDOW[0] <= hm < INTRADAY_WINDOW[1]) or BENCH not in closes or BENCH not in ctx:
         return
@@ -324,11 +335,11 @@ def decide_rule_short(acct, env):
         if dollars < 50:
             break
         c = closes[sym]
-        checks = [{"text": f"较今日开盘价 ${ctx[sym]['open']:.2f} 回落 {dip:+.2%}（需 ≤ -{B_DIP:.1%}）", "ok": True},
-                  {"text": f"上升趋势：现价>50日均线 ${sma(c, 50):.2f} 且 20日均线 ${sma(c, 20):.2f} > 50日均线", "ok": True},
-                  {"text": f"大盘 SPY 今日 {spy_chg:+.2%}（需 > -1.5%）", "ok": True},
-                  {"text": f"美东 {hm[0]:02d}:{hm[1]:02d}，在 10:00–15:00 开仓窗口内", "ok": True}]
-        queue(acct, "BUY", sym, ts, c[-1], f"上升趋势中日内回调 {dip:+.1%}，低吸",
+        checks = [{"text": K("c.dip", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", thr=f"{B_DIP:.1%}"), "ok": True},
+                  {"text": K("c.uptrend", s50=f"${sma(c, 50):.2f}", s20=f"${sma(c, 20):.2f}"), "ok": True},
+                  {"text": K("c.spy_day", chg=f"{spy_chg:+.2%}"), "ok": True},
+                  {"text": K("c.window", hm=f"{hm[0]:02d}:{hm[1]:02d}"), "ok": True}]
+        queue(acct, "BUY", sym, ts, c[-1], K("r.dip", d=f"{dip:+.1%}"),
               {"checks": checks, "ind": snap(c), "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
         n += 1
 
@@ -337,8 +348,8 @@ def _hold_forever(acct, closes, ts, syms):
         return
     each = acct["cash"] / len(syms)
     for s in syms:
-        queue(acct, "BUY", s, ts, closes[s][-1], "基准：买入并持有",
-              {"checks": [{"text": f"开局按 1/{len(syms)} 等权买入，之后不再操作", "ok": True}], "ind": snap(closes[s]),
+        queue(acct, "BUY", s, ts, closes[s][-1], K("r.bh"),
+              {"checks": [{"text": K("c.bh", n=len(syms)), "ok": True}], "ind": snap(closes[s]),
                "equity": INITIAL_CASH, "weight": round(1 / len(syms), 3)}, dollars=each)
 
 def decide_spy(acct, env):
@@ -358,8 +369,8 @@ def decide_random(acct, env):
     for sym in sorted(acct["positions"]):
         x = rnd.random()
         if x < RANDOM_SELL_PROB and sym in closes and sym not in pend and et_date(acct["positions"][sym]["entry"]) != today:
-            queue(acct, "SELL", sym, ts, closes[sym][-1], "随机抽签卖出",
-                  {"checks": [{"text": f"随机数 {x:.2f} < {RANDOM_SELL_PROB}（每个持仓每天 6% 概率卖出）", "ok": True}], "ind": snap(closes[sym])})
+            queue(acct, "SELL", sym, ts, closes[sym][-1], K("r.rnd_sell"),
+                  {"checks": [{"text": K("c.rnd_sell", x=f"{x:.2f}", p=RANDOM_SELL_PROB), "ok": True}], "ind": snap(closes[sym])})
     n = len(acct["positions"]) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
     x = rnd.random()
     if n < A_MAX_POS and x < RANDOM_BUY_PROB:
@@ -369,8 +380,8 @@ def decide_random(acct, env):
             eq = equity_of(acct, prices)
             dollars = min(eq * A_WEIGHT, acct["cash"] - committed(acct))
             if dollars >= 50:
-                queue(acct, "BUY", sym, ts, closes[sym][-1], "随机抽签买入",
-                      {"checks": [{"text": f"随机数 {x:.2f} < {RANDOM_BUY_PROB}（有空位时每天 20% 概率买入，标的随机选）", "ok": True}],
+                queue(acct, "BUY", sym, ts, closes[sym][-1], K("r.rnd_buy"),
+                      {"checks": [{"text": K("c.rnd_buy", x=f"{x:.2f}", p=RANDOM_BUY_PROB), "ok": True}],
                        "ind": snap(closes[sym]), "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
 
 
@@ -416,12 +427,12 @@ def decide_ai(acct, env, p):
         pos["peak"] = max(pos["peak"], px)
         reason = None
         if px <= pos["avg_cost"] * (1 - p["stop"]):
-            reason = f"代码风控：触及止损 -{p['stop']:.0%}"
+            reason = K("r.code_stop", p=f"{p['stop']:.0%}")
         elif p["flatten"] and hm >= p["flatten"]:
-            reason = "代码风控：日内交易，收盘前清仓"
+            reason = K("r.code_flatten")
         if reason:
             queue(acct, "SELL", sym, ts, px, reason,
-                  {"checks": [{"text": f"现价 ${px:.2f}，成本 ${pos['avg_cost']:.2f}（{px / pos['avg_cost'] - 1:+.2%}）；这是代码强制的风控，不经过 AI", "ok": True}],
+                  {"checks": [{"text": K("c.code_exit", px=f"${px:.2f}", cost=f"${pos['avg_cost']:.2f}", chg=f"{px / pos['avg_cost'] - 1:+.2%}"), "ok": True}],
                    "ind": snap(closes[sym])})
     # 2) the AI review round
     st = acct["ai"]
@@ -463,14 +474,14 @@ def decide_ai(acct, env, p):
     nid = {n["id"]: n for n in news}
     avail = max(acct["cash"] - committed(acct), 0)
     n_pos = len(pos_map) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
-    buys, summary, round_decs, norders = 0, str(data.get("summary", ""))[:160], [], 0
+    buys, summary, round_decs, norders = 0, ml(data.get("summary", ""), 160), [], 0
     for d in (data.get("decisions") or [])[:30]:
         sym, act = str(d.get("symbol", "")).upper(), str(d.get("action", "")).upper()
-        reason = str(d.get("reason", ""))[:200]
-        e = {"symbol": sym, "action": act, "reason": reason, "applied": False, "note": ""}
+        reason = ml(d.get("reason", ""), 200)
+        e = {"symbol": sym, "action": act, "reason": reason, "applied": False, "note": None}
         round_decs.append(e)
         if sym not in UNIVERSE or sym not in closes or act not in ("BUY", "SELL", "HOLD"):
-            e["note"] = "无效标的或动作，已忽略"; continue
+            e["note"] = K("n.invalid"); continue
         if act == "HOLD":
             continue
         try:
@@ -485,15 +496,15 @@ def decide_ai(acct, env, p):
         px = closes[sym][-1]
         if act == "BUY":
             if sym in pos_map or sym in pend:
-                e["note"] = "已持有或已有挂单"
+                e["note"] = K("n.held")
             elif n_pos >= p["max_pos"]:
-                e["note"] = f"持仓数已满（{p['max_pos']}）"
+                e["note"] = K("n.full", n=p["max_pos"])
             elif buys >= p["max_buys"]:
-                e["note"] = "本轮买入次数已达上限"
+                e["note"] = K("n.maxbuys")
             elif p["no_new_after"] and hm >= p["no_new_after"]:
-                e["note"] = "已过开仓截止时间"
+                e["note"] = K("n.late")
             elif sym in traded_today(acct, today) and p["horizon"] == "short":
-                e["note"] = "今日已交易过该标的"
+                e["note"] = K("n.traded")
             else:
                 try:
                     w = min(max(float(d.get("weight", p["cap"])), 0.05), p["cap"])
@@ -501,13 +512,13 @@ def decide_ai(acct, env, p):
                     w = p["cap"]
                 dollars = min(eq * w, avail)
                 if dollars < 50:
-                    e["note"] = "可用现金不足"
+                    e["note"] = K("n.cash")
                 else:
-                    chk = [{"text": f"AI 理由：{reason}（信心 {conf:.0%}）", "ok": True},
-                           {"text": f"代码校验通过：仓位 {dollars / eq:.0%} ≤ 上限 {p['cap']:.0%}；持仓数 {n_pos + 1}/{p['max_pos']}；用可用现金 ${dollars:.0f}", "ok": True}]
+                    chk = [{"text": K("c.ai_reason", why=reason, conf=f"{conf:.0%}"), "ok": True},
+                           {"text": K("c.code_ok_buy", w=f"{dollars / eq:.0%}", cap=f"{p['cap']:.0%}", n=n_pos + 1, maxn=p["max_pos"], dollars=f"${dollars:.0f}"), "ok": True}]
                     if bad_ids:
-                        chk.append({"text": f"AI 引用的新闻编号 {bad_ids} 不存在，已忽略这些引用", "ok": False})
-                    queue(acct, "BUY", sym, ts, px, f"AI 买入：{reason}",
+                        chk.append({"text": K("c.bad_ids", ids=", ".join(bad_ids)), "ok": False})
+                    queue(acct, "BUY", sym, ts, px, K("r.ai_buy", why=reason),
                           {"checks": chk, "ind": snap(closes[sym]), "ai": ai_info, "news": news_info,
                            "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
                     avail -= dollars; n_pos += 1; buys += 1; norders += 1; e["applied"] = True
@@ -515,15 +526,15 @@ def decide_ai(acct, env, p):
             x = pos_map.get(sym)
             held = (datetime.fromisoformat(today) - datetime.fromisoformat(et_date(x["entry"]))).days if x else 0
             if not x or sym in pend:
-                e["note"] = "未持有或已有挂单"
+                e["note"] = K("n.notheld")
             elif held < p["min_hold"]:
-                e["note"] = f"持有不足 {p['min_hold']} 天，代码拒绝"
+                e["note"] = K("n.minhold", d=p["min_hold"])
             else:
-                chk = [{"text": f"AI 理由：{reason}（信心 {conf:.0%}）", "ok": True},
-                       {"text": f"代码校验通过：持有 {held} 天，满足最短持有期 {p['min_hold']} 天", "ok": True}]
+                chk = [{"text": K("c.ai_reason", why=reason, conf=f"{conf:.0%}"), "ok": True},
+                       {"text": K("c.code_ok_sell", held=held, minhold=p["min_hold"]), "ok": True}]
                 if bad_ids:
-                    chk.append({"text": f"AI 引用的新闻编号 {bad_ids} 不存在，已忽略这些引用", "ok": False})
-                queue(acct, "SELL", sym, ts, px, f"AI 卖出：{reason}",
+                    chk.append({"text": K("c.bad_ids", ids=", ".join(bad_ids)), "ok": False})
+                queue(acct, "SELL", sym, ts, px, K("r.ai_sell", why=reason),
                       {"checks": chk, "ind": snap(closes[sym]), "ai": ai_info, "news": news_info})
                 norders += 1; e["applied"] = True
     st["done"].append(key)
