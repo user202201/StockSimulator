@@ -22,3 +22,9 @@ python -m http.server -d docs   # 浏览器打开 http://localhost:8000
 1. 合并到默认分支（Actions 定时任务只在默认分支运行）
 2. Settings → Pages → Source 选 **GitHub Actions**
 3. Actions → trade → Run workflow
+
+## 运行机制（自动接力）
+GitHub 的定时任务（cron）经常延迟几小时，所以不依赖它：
+- `trade.yml`：真正干活（行情、决策、成交、发布网页），一次约 1 分钟。结束时把接力棒交给 `tick.yml`。
+- `tick.yml`：计时器。交易时段每 15 分钟叫醒一次 `trade`；休市时（夜里、周末）每次最多睡 5 小时再叫醒下一个 `tick`，最后一棒在下一个交易日美东 9:30:45 叫醒 `trade`。链条永不停止，不需要手动启动。
+- 保险：`trade`/`tick` 的 cron、`keepalive`（每周）都会重新叫醒 `tick`；同一时间只会有一条链（并发组保证）。

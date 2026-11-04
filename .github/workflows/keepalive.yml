@@ -28,3 +28,7 @@ jobs:
         run: gh workflow enable trade.yml || true
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Make sure the run chain (tick) is alive
+        run: gh workflow run tick.yml --ref "$GITHUB_REF_NAME" || true
+        env:
+          GH_TOKEN: ${{ github.token }}

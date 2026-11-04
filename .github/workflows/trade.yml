@@ -1,8 +1,8 @@
 name: trade
 on:
   schedule:
-    # Watchdog only: GitHub's cron is unreliable (often hours late), so runs normally chain themselves
-    # (see the last step). Any scheduled run that does fire simply restarts the chain if it had died.
+    # Watchdog only: GitHub's cron is unreliable (often hours late). Runs normally chain themselves through the
+    # tick workflow (see the last step); any scheduled run that does fire also hands over to tick and so revives a broken chain.
     - cron: "*/15 12-21 * * 1-5"
   workflow_dispatch:
     inputs:
@@ -22,7 +22,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -93,19 +93,13 @@ jobs:
         if: steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/deploy-pages@v4
 
-      - name: Chain the next run (keeps the 15-minute cadence without relying on cron)
+      - name: Hand over to the clock (tick keeps the chain going, also overnight and at weekends)
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          WAIT=$(python3 bot/next_run.py)
-          echo "next-run helper says: $WAIT"
-          if [ "$WAIT" = "stop" ]; then exit 0; fi
-          sleep "$WAIT"
-          # another run already queued/in progress (e.g. a scheduled one) will carry the chain on itself
-          OTHERS=$(gh run list --workflow trade.yml --json databaseId,status --limit 30 \
-                   -q "[.[] | select(.status != \"completed\" and .databaseId != ${{ github.run_id }})] | length")
-          echo "other active runs: $OTHERS"
-          if [ "$OTHERS" = "0" ]; then
-            gh workflow run trade.yml --ref "$GITHUB_REF_NAME" -f chained=true
-          fi
+          for i in 1 2 3 4 5; do
+            gh workflow run tick.yml --ref "$GITHUB_REF_NAME" && exit 0
+            sleep 10
+          done
+          exit 0

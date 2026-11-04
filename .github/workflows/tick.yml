@@ -1,0 +1,37 @@
+name: tick
+# The clock of the experiment. It sleeps, then starts the next "trade" run (or the next sleep).
+# Kept separate from the trade workflow so a sleeping chain never blocks manual or scheduled trade runs.
+on:
+  workflow_dispatch:
+  schedule:
+    # an extra revival path in case the chain ever breaks; GitHub's cron is unreliable, so this is only a bonus
+    - cron: "17 */4 * * *"
+concurrency:
+  group: tick
+  cancel-in-progress: false
+permissions:
+  contents: read
+  actions: write
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sleep until the next wake-up, then pass the baton
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OUT=$(python3 bot/next_run.py)
+          WAIT=${OUT% *}; KIND=${OUT#* }
+          echo "sleeping ${WAIT}s, then starting: ${KIND}"
+          sleep "$WAIT"
+          for i in 1 2 3 4 5; do
+            if [ "$KIND" = "trade" ]; then
+              gh workflow run trade.yml --ref "$GITHUB_REF_NAME" -f chained=true && exit 0
+            else
+              gh workflow run tick.yml --ref "$GITHUB_REF_NAME" && exit 0
+            fi
+            sleep 10
+          done
+          exit 1
