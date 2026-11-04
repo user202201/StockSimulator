@@ -72,7 +72,7 @@ RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
 PROMPT_VER = {"long": 3, "short": 3, "aggr": 1}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
-E_DEFAULT_CAP, E_RESERVE = 60, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
+E_DEFAULT_CAP, E_RESERVE = 200, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
     "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
                 "rounds": [(10, 0)], "news_age": 36, "flatten": None, "no_new_after": None, "reentry": True},

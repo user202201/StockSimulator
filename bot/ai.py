@@ -36,7 +36,7 @@ def providers():
 class Client:
     def __init__(self, pinned=None):
         self.deadline = time.time() + float(os.environ.get("AI_RUN_BUDGET_S", "480"))   # wall-clock budget for all AI calls of one run
-        self.http_calls = 0                  # HTTP requests made (for the daily quota bookkeeping)
+        self.http_calls = 0                  # answered requests (for the daily quota bookkeeping)
         self.daily_quota_hit = False         # set when the provider reports its per-day quota is exhausted
         self.providers = providers()
         self.pinned = pinned if pinned is not None else {}      # provider -> model chosen by auto-discovery (persisted in state)
@@ -161,9 +161,10 @@ class Client:
             left = self.time_left()
             if left < 10:
                 raise ApiError(0, "run time budget exhausted")
-            self.http_calls += 1
             try:
-                return self._open(req, timeout=min(120, left))["choices"][0]["message"]["content"]
+                out = self._open(req, timeout=min(120, left))["choices"][0]["message"]["content"]
+                self.http_calls += 1               # only answered requests count: failed (503/429) calls do not use up the free quota
+                return out
             except ApiError as e:
                 if e.code == 429 and "perday" in re.sub(r"[^a-z]", "", e.body.lower()):
                     self.daily_quota_hit = True
