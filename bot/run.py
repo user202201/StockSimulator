@@ -664,8 +664,9 @@ def market_snapshot(closes, ctx, ts):
         if len(c) < 61:
             continue
         i, o = snap(c), ctx.get(s, {}).get("open")
+        hi, lo = ctx.get(s, {}).get("high"), ctx.get(s, {}).get("low")
         out[s] = {"t": ts, "price": round(c[-1], 2), "prev": round(c[-2], 2), "day": round(c[-1] / c[-2] - 1, 4),
-                  "open": round(o, 2) if o else None, "sma20": round(i["sma20"], 2), "sma50": round(i["sma50"], 2),
+                  "open": round(o, 2) if o else None, "hi": round(hi, 2) if hi else None, "lo": round(lo, 2) if lo else None, "sma20": round(i["sma20"], 2), "sma50": round(i["sma50"], 2),
                   "sma200": round(sma(c, 200), 2) if len(c) >= 200 else None, "rsi": round(i["rsi"], 1),
                   "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "spark": [round(x, 2) for x in c[-40:]]}
     return out
