@@ -18,7 +18,7 @@ TOPICS = ["sma", "rsi", "momentum", "drawdown", "volatility", "stop", "slippage"
 NEWS_TYPES = ("earnings", "product", "analyst", "regulatory", "mna", "macro", "legal", "other")
 VERDICTS = ("good_call", "bad_call", "lucky", "unlucky", "neutral")
 MAX_CALLS = 5                      # learning calls per day, on top of the trading calls
-REASON_EN = {"r.hard_stop": "hard stop", "r.trail_stop": "volatility-based trailing stop", "r.below_sma50": "fell below the 50-day average",
+REASON_EN = {"r.hard_stop": "hard stop", "r.trail_stop": "volatility-based trailing stop", "r.below_sma50": "fell below the 50-day average", "r.below_sma20": "fell below the 20-day average",
              "r.uptrend": "uptrend entry (60-day momentum)", "r.tp": "small take profit", "r.sl": "volatility-based stop loss", "r.timeout": "held long enough: rotate", "r.flatten": "flatten before the close", "r.eod_cut": "end-of-day cut: not in profit",
              "r.dip": "intraday dip buy", "r.brk": "intraday momentum-continuation buy", "r.bh": "buy and hold", "r.rnd_buy": "random buy", "r.rnd_sell": "random sell",
              "r.ai_buy": "AI buy", "r.ai_sell": "AI sell", "r.code_stop": "code stop-loss", "r.code_flatten": "code flatten before the close"}

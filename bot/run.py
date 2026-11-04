@@ -61,6 +61,7 @@ B_MAX_POS, B_WEIGHT = 6, 0.20
 B_TP_K, B_TP_MIN, B_TP_MAX = 0.8, 0.010, 0.030       # B take-profit = 0.8 x daily volatility (1%-3%): small wins
 B_SL_K, B_SL_MIN, B_SL_MAX = 1.0, 0.010, 0.035       # B stop-loss = 1.0 x daily volatility (1%-3.5%)
 B_DIP_K, B_DIP_MIN, B_DIP_MAX = 0.6, 0.008, 0.020    # B entry threshold (pullback from open / breakout minimum) = 0.6 x daily volatility
+B_BREAK_BUFFER = 0.01                                # B: exit when the close is 1% below the 20-day average
 B_MAX_HOLD_DAYS = 7                                  # B: calendar days (~5 trading days); then rotate at the close
 B_BRK_MAX, B_BRK_RANGE = 0.060, 0.75   # B breakout entry: up 1%-6% from the open and in the top quarter of today's range
 B_VOL_TARGET, B_W_MIN, B_W_MAX = 0.003, 0.08, 0.25   # B: same idea, smaller
@@ -89,11 +90,11 @@ ACCOUNTS = {
                "最多同时持有 6 只，按 60 日动量排序选股；仓位按波动率调整（波动越大买得越少，每只 10%–30%），总仓位最多 95%",
                "卖出：从最高点回撤（按个股波动调整，约 7%–15%）/ 跌破 50 日均线 2% / 亏损超过回撤线再加 2% 的硬止损；除硬止损外，都只在 15:45 收盘前确认后才执行（不被盘中噪音洗出去）",
                "同一天买入的股票当天不卖；卖出后 3 天内不再买回"]),
-    "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线（A 的快节奏版）", freq="每 15 分钟检查，一天可多次交易，持仓数天，不强制清仓",
-        desc="完全按预设条件做短线，思路和 A 一致（只做上升趋势股票），但节奏更快：入场更灵敏、目标更小、周转更快，靠一次次小赢累积，求稳。没有合适机会时可以观望，但不会长期空仓；不会每天清仓，持仓可以过夜。没有 AI。",
-        rules=["买入：10:00–15:30 之间，SPY 在 200 日线之上且当日跌幅不超过 1.5%，上升趋势股票（现价>50日均线且20日均线>50日均线）满足其一：①较开盘回落到按波动率定的幅度（约 0.8%–2%，低吸）；②较开盘上涨超过该幅度（不超过 6%）且处在当日区间上沿（顺势追强）",
+    "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线", freq="每 15 分钟检查，一天可多次交易，持仓数天，不强制清仓",
+        desc="完全按预设条件做短线，和 A 同属顺势，但看的是短期趋势（站上并向上的 20 日均线），挑股票按“今天的异动幅度”排序，不看 A 那样的 60 日长期动量，所以不会和 A 买同一批；节奏更快：入场更灵敏、目标更小、周转更快，靠一次次小赢累积，求稳。没有合适机会时可以观望，但不会长期空仓；不会每天清仓，持仓可以过夜。没有 AI。",
+        rules=["买入：10:00–15:30 之间，SPY 在 200 日线之上且当日跌幅不超过 1.5%，短期上升趋势的股票（现价>20日均线且20日均线比5天前更高）满足其一，同时满足的按当日异动幅度（相对日波动）从大到小选：①较开盘回落到按波动率定的幅度（约 0.8%–2%，低吸）；②较开盘上涨超过该幅度（不超过 6%）且处在当日区间上沿（顺势追强）",
                "最多同时持有 6 只，仓位按波动率调整（每只 8%–25%），总仓位最多 95%，每只股票每天最多买一次",
-               "卖出：止盈 0.8 倍日波动（1%–3%，小赢就走）/ 止损 1.0 倍日波动（1%–3.5%）/ 收盘前确认跌破 50 日线 2% / 持有满 7 天（约 5 个交易日）后在收盘前换仓；不再每天清仓，盈亏都可以过夜"]),
+               "卖出：止盈 0.8 倍日波动（1%–3%，小赢就走）/ 止损 1.0 倍日波动（1%–3.5%）/ 收盘前确认跌破 20 日线 1% / 持有满 7 天（约 5 个交易日）后在收盘前换仓；不再每天清仓，盈亏都可以过夜"]),
     "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:00），持有数天到数周",
         desc="每天开盘半小时后，AI 读取 21 只股票的行情指标和最新新闻标题，自己判断买什么、卖什么、仓位多少。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
@@ -365,6 +366,10 @@ def decide_rule_long(acct, env):
                "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
         n += 1
 
+def short_trend(c):
+    """B's own trend test (short horizon): above a rising 20-day average. Deliberately different from A's 50-day trend and 60-day ranking."""
+    return len(c) >= 26 and c[-1] > sma(c, 20) and sma(c, 20) > sma(c[:-5], 20)
+
 def b_levels(c):
     """B: per-stock levels from daily volatility. Returns (take-profit, stop-loss, dip threshold, breakout minimum)."""
     v = vol20(c)
@@ -372,7 +377,7 @@ def b_levels(c):
             min(max(B_DIP_K * v, B_DIP_MIN), B_DIP_MAX), min(max(B_DIP_K * v, B_DIP_MIN), B_DIP_MAX))
 
 def decide_rule_short(acct, env):
-    """B = A's idea at a faster pace: trend stocks only, small volatility-scaled targets, positions may be held for days (no daily flatten)."""
+    """B = A's idea at a faster pace: short-trend stocks only, small volatility-scaled targets, positions may be held for days (no daily flatten)."""
     closes, ctx, ts, prices = env["closes"], env["ctx"], env["ts"], env["prices"]
     today, hm = et_date(ts), et_hm(ts)
     pend = {o["symbol"] for o in acct["pending"]}
@@ -387,16 +392,16 @@ def decide_rule_short(acct, env):
         tp, sl = pos["tp"], pos["sl"]
         gain = p / pos["avg_cost"] - 1
         age = (date.fromisoformat(today) - date.fromisoformat(et_date(pos["entry"]))).days if pos.get("entry") else 0
-        s50 = sma(c, 50)
+        s20 = sma(c, 20)
         closing = hm >= A_DECIDE_AT
-        brk = s50 * (1 - A_SMA_BUFFER) if s50 else None
+        brk = s20 * (1 - B_BREAK_BUFFER) if s20 else None
         reason = (K("r.tp") if gain >= tp else K("r.sl") if gain <= -sl else
-                  K("r.below_sma50") if closing and brk and p < brk else
+                  K("r.below_sma20") if closing and brk and p < brk else
                   K("r.timeout", d=B_MAX_HOLD_DAYS) if closing and age >= B_MAX_HOLD_DAYS else None)
         if reason:
             checks = [{"text": K("c.gain", cost=f"${pos['avg_cost']:.2f}", g=f"{gain:+.2%}", tp=f"{tp:.1%}", sl=f"{sl:.1%}"), "ok": gain >= tp or gain <= -sl},
                       {"text": K("c.age", d=age, n=B_MAX_HOLD_DAYS), "ok": closing and age >= B_MAX_HOLD_DAYS},
-                      {"text": K("c.sma50_exit", p=f"${p:.2f}", op="<" if brk and p < brk else "≥", s=f"${brk:.2f}" if brk else "—"), "ok": bool(closing and brk and p < brk)}]
+                      {"text": K("c.sma20_exit", p=f"${p:.2f}", op="<" if brk and p < brk else "≥", s=f"${brk:.2f}" if brk else "—"), "ok": bool(closing and brk and p < brk)}]
             queue(acct, "SELL", sym, ts, p, reason, {"checks": checks, "ind": snap(c)})
     if not (INTRADAY_WINDOW[0] <= hm < INTRADAY_WINDOW[1]) or BENCH not in closes or BENCH not in ctx or not market_regime_ok(closes):
         return
@@ -406,11 +411,11 @@ def decide_rule_short(acct, env):
     skip = set(acct["positions"]) | traded_today(acct, today)
     cands = []
     for s in UNIVERSE:
-        if s in closes and s in ctx and s not in skip and uptrend(closes[s]):
+        if s in closes and s in ctx and s not in skip and short_trend(closes[s]):
             mv = closes[s][-1] / ctx[s]["open"] - 1
             hi, lo = ctx[s].get("high"), ctx[s].get("low")
             rng = (closes[s][-1] - lo) / (hi - lo) if hi and lo and hi > lo else None
-            mom60 = closes[s][-1] / closes[s][-61] - 1 if len(closes[s]) > 60 else 0
+            mom60 = abs(mv) / max(vol20(closes[s]), 1e-4)      # B ranks by how unusual today's move is (in daily-volatility units), not by A's 60-day momentum
             _, _, dip_thr, brk_min = b_levels(closes[s])
             if mv <= -dip_thr:                                                   # entry 1: pullback in an uptrend
                 cands.append((mom60, mv, s, "dip", rng, dip_thr))
@@ -430,7 +435,7 @@ def decide_rule_short(acct, env):
         entry_chk = (K("c.dip", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", thr=f"{thr:.1%}") if kind == "dip" else
                      K("c.brk", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", lo=f"{thr:.1%}", hi=f"{B_BRK_MAX:.0%}", r=f"{rng:.0%}"))
         checks = [{"text": entry_chk, "ok": True},
-                  {"text": K("c.uptrend", s50=f"${sma(c, 50):.2f}", s20=f"${sma(c, 20):.2f}"), "ok": True},
+                  {"text": K("c.short_trend", s20=f"${sma(c, 20):.2f}", s20p=f"${sma(c[:-5], 20):.2f}"), "ok": True},
                   {"text": K("c.spy_day", chg=f"{spy_chg:+.2%}"), "ok": True},
                   {"text": K("c.window", hm=f"{hm[0]:02d}:{hm[1]:02d}"), "ok": True},
                   {"text": K("c.size", s=f"{sigma:.1%}", t=f"{B_VOL_TARGET:.1%}", w=f"{w:.0%}", lo=f"{B_W_MIN:.0%}", hi=f"{B_W_MAX:.0%}"), "ok": True}]
@@ -707,7 +712,7 @@ def market_snapshot(closes, ctx, ts):
         out[s] = {"t": ts, "price": round(c[-1], 2), "prev": round(c[-2], 2), "day": round(c[-1] / c[-2] - 1, 4),
                   "open": round(o, 2) if o else None, "hi": round(hi, 2) if hi else None, "lo": round(lo, 2) if lo else None, "sma20": round(i["sma20"], 2), "sma50": round(i["sma50"], 2),
                   "sma200": round(sma(c, 200), 2) if len(c) >= 200 else None, "rsi": round(i["rsi"], 1),
-                  "vol": round(vol20(c), 4), "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "off_high": round(c[-1] / max(c[-60:]) - 1, 4), "spark": [round(x, 2) for x in c[-40:]]}
+                  "vol": round(vol20(c), 4), "sma20_5": round(sma(c[:-5], 20), 2) if len(c) >= 26 else None, "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "off_high": round(c[-1] / max(c[-60:]) - 1, 4), "spark": [round(x, 2) for x in c[-40:]]}
     return out
 
 def step(state, closes, ctx, ts, news_fn=None, ai=None):
