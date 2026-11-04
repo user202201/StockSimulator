@@ -16,15 +16,17 @@ class ApiError(Exception):
 
 
 def providers():
+    """Primary first. Gemini (free key from AI Studio) is tried first; a custom OpenAI-compatible service
+    (OpenRouter, Groq, ... via AI_BASE_URL / AI_API_KEY / AI_MODEL) is the backup when Gemini fails entirely."""
     env = os.environ.get
     ps = []
-    if env("AI_BASE_URL") and env("AI_API_KEY"):
-        ps.append({"name": "custom", "url": env("AI_BASE_URL").rstrip("/") + "/chat/completions",
-                   "key": env("AI_API_KEY"), "model": env("AI_MODEL") or "default"})
     if env("GEMINI_API_KEY"):
         base = (env("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
         ps.append({"name": "gemini", "url": base + "/chat/completions", "key": env("GEMINI_API_KEY"),
                    "model": env("GEMINI_MODEL") or "gemini-2.5-flash", "explicit": bool(env("GEMINI_MODEL"))})
+    if env("AI_BASE_URL") and env("AI_API_KEY"):
+        ps.append({"name": "custom", "url": env("AI_BASE_URL").rstrip("/") + "/chat/completions",
+                   "key": env("AI_API_KEY"), "model": env("AI_MODEL") or "default"})
     if env("GITHUB_TOKEN") and env("ENABLE_GH_MODELS"):      # opt-in: observed returning a plain "OK" body (service retired?)
         ps.append({"name": "github-models", "url": "https://models.github.ai/inference/chat/completions",
                    "key": env("GITHUB_TOKEN"), "model": env("GH_MODEL") or "openai/gpt-4.1-mini"})
@@ -64,40 +66,47 @@ class Client:
 
     def _try(self, p, messages):
         """Call one provider and return (text, model_used, notes).
-        Gemini with an auto-selected model: if that model is gone (400/404) the next working Flash model is pinned;
-        if it is only overloaded (503/429/timeout) the next best Flash model answers this call and the pin is unchanged."""
+        Gemini with an auto-selected model walks down a ladder of models when something goes wrong: overload (503 / 429 /
+        timeout), a model that no longer exists (400/404), or an answer that is not valid JSON. A model that is merely
+        overloaded gets one retry first. The pinned (preferred) model only changes when it no longer exists."""
         preferred = p["model"]
         auto = p["name"] == "gemini" and not p.get("explicit")
-        order, i, tried, gone, retried = [preferred], 0, [], False, set()
+        order, i, tried, gone, retried, first_body = [preferred], 0, [], False, set(), ""
         while True:
             model = order[i]
             p["model"] = model
             try:
                 txt = self._call(p, messages)
-                if gone:
+                try:
+                    extract_json(txt)
+                except Exception:
+                    raise ApiError(0, "answer was not valid JSON")
+                if gone and "lite" not in model:
                     self.pinned[p["name"]] = model            # the preferred model no longer exists: remember the replacement
                     preferred = model
                 p["model"] = preferred
                 return txt, model, tried
             except ApiError as e:
-                tried.append(f"{model}: {e}"[:140])
+                tried.append(f"{model} ({e.code or 'error'})")
+                first_body = first_body or f"{e}"[:110]
                 if auto and e.code in (500, 502, 503, 504) and model not in retried and self.time_left() > 45:
-                    retried.add(model)                      # "high demand, try again later": give the same model one more chance first
+                    retried.add(model)                      # "high demand, try again later": one more chance on the same model first
                     time.sleep(8)
+                    tried.pop()
                     continue
                 if not auto or not (e.code in (400, 404) or e.code in self.OVERLOAD):
                     p["model"] = preferred
                     raise
-                if len(order) == 1:                            # first failure: look up alternatives once
+                if len(order) == 1:                            # first failure: look up the ladder once
                     try:
-                        order += [m for m in self._candidates(p) if m != preferred][:3]
+                        order += [m for m in self._candidates(p, include_lite=True) if m != preferred][:5]
                     except Exception:
                         pass
                 gone = gone or e.code in (400, 404)
                 i += 1
                 if i >= len(order):
                     p["model"] = preferred
-                    raise RuntimeError("; ".join(tried))
+                    raise RuntimeError("tried " + ", ".join(tried) + " | " + first_body)
 
     def second_opinion(self, messages, primary_model, payload=None):
         """A second analyst: same prompt, a different model. Informational only, never traded on."""
@@ -116,18 +125,18 @@ class Client:
                     continue
         return None, None
 
-    def _candidates(self, p, include_lite=False):
+    def _candidates(self, p, include_lite=True):
+        """Usable Gemini models, best first: newest stable Flash, then preview Flash, then Flash-Lite (last resort)."""
         url = p["url"].rsplit("/chat/completions", 1)[0] + "/models"
         data = self._open(urllib.request.Request(url, headers={"Authorization": "Bearer " + p["key"]}), timeout=30)
         ids = [str(x.get("id", "")).replace("models/", "") for x in data.get("data", [])]
         bad = ("image", "tts", "live", "audio", "embed", "robotics", "computer", "vision", "exp") + (() if include_lite else ("lite",))
         flash = [i for i in ids if "flash" in i and not any(b in i for b in bad)]
-        stable = [i for i in flash if "preview" not in i] + [i for i in flash if "preview" in i]
         ver = lambda s: [float(x) for x in re.findall(r"\d+(?:\.\d+)?", s)] or [0]
-        stable.sort(key=lambda s: ("preview" in s, [-v for v in ver(s)], len(s)))
-        if not stable:
+        flash.sort(key=lambda s: ("lite" in s, "preview" in s, [-v for v in ver(s)], len(s)))
+        if not flash:
             raise ApiError(404, "no usable flash model; available: " + ", ".join(ids[:15]))
-        return stable
+        return flash
 
     @staticmethod
     def _open(req, timeout=120):

@@ -18,6 +18,9 @@ python -m http.server -d docs   # 浏览器打开 http://localhost:8000
 3. 可选：Variables 里设 `GEMINI_MODEL`（默认 `gemini-2.5-flash`）
 没有配置时 A、B 和对照账户照常运行，C、D 暂不交易，看板会提示。
 
+**自动切换模型**：Gemini 出问题（过载 503、限流、超时、模型下线、返回的不是合法 JSON）时，会按顺序自动换：最新的稳定版 Flash → 预览版 Flash → Flash-Lite（最后手段）。同一个密钥下的各个型号额度各算各的。换了哪个模型会记在每条决策里。
+**可选的备用服务商**：想防“Google 整体出问题”，可以再注册一个免费服务（如 OpenRouter、Groq），在仓库 Secrets 里加 `AI_BASE_URL`、`AI_API_KEY`，Variables 里加 `AI_MODEL`；Gemini 全部失败时才会用它。
+
 ## 上线
 1. 合并到默认分支（Actions 定时任务只在默认分支运行）
 2. Settings → Pages → Source 选 **GitHub Actions**
