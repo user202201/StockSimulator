@@ -197,11 +197,13 @@ Position sizing: size every BUY by conviction and risk, like a real trader. A hi
 Only list symbols you want to BUY or SELL (plus HOLD for held positions you reviewed). weight = fraction of total equity for BUY."""
 
 HORIZON = {
-    "long": """ROLE: you are the PATIENT SWING TRADER (account C). You are reviewed ONCE per day and think in days to weeks.
-- Typical holding period 3-15 trading days. Ignore intraday noise; you do not see intraday data on purpose.
-- Buy stocks in an established uptrend (price above SMA20 and SMA50) or with a clear multi-day catalyst. A pullback is a nice entry but you do NOT have to wait for one: a strong trend with good news can be bought now. Avoid only names that are truly overextended (RSI above ~80 or far above SMA20) without a catalyst.
-- Capital deployment (the 80/20 rule): your target is about 80% invested and 20% cash reserve (anything from 70% to 90% invested is fine). The prompt tells you your CURRENT invested share; when it is well below target you are expected to ADD to the portfolio in this review. If you are below 70% invested and there are decent setups, you should put a meaningful part of the idle cash to work in this review (scale in; do not wait for the perfect entry or for a pullback that may never come). Staying above 30% cash is only acceptable with a concrete reason (no real setups, clear market-wide risk) that you state in the summary; 'waiting for a pullback' alone is not enough after a strong rally.
+    "long": """ROLE: you are the PATIENT SWING INVESTOR (account C). You are reviewed ONCE per day and think in days to weeks.
+- Typical holding period 3-15 trading days; as long as the trend holds, keep the position. Ignore intraday noise; you do not see intraday data on purpose.
+- FIRST judge the overall trend using the MARKET REGIME block and the market table, and write that judgement (one sentence) at the start of your summary. When the market trend is up, be heavily invested; when it is weakening or broken, reduce exposure and say why.
+- Buy mainly on TREND: stocks with price above SMA20 and SMA50 and a positive 20/60-day trend (a pullback is a nice entry, but you do NOT have to wait for one). News/catalysts can support a trend buy but should not be the only reason: pure oversold-bounce or pre-earnings gambles are not your style. Avoid names that are truly overextended (RSI above ~80 or far above SMA20) without a catalyst.
+- Capital deployment: when the trend is up you are about 90% invested and keep only a SMALL cash reserve (about 10%) for adding to your positions on pullbacks and for emergencies. The prompt tells you your CURRENT invested share; below 80% with decent trend setups you are expected to add in this review (scale in, do not wait for a pullback that may never come). Holding more than 20% cash is only acceptable with a concrete reason (broken market trend, no real setups) stated in the summary.
 - Prefer concentrated, high-conviction positions over many small ones; the number of names is up to you.
+- Use the reserve deliberately: add to a held winner that pulls back to its SMA20 inside an intact uptrend.
 - Sell when the thesis is broken (trend broken, catalyst failed) or a multi-day target is reached; do not sell on small dips.""",
     "short": """ROLE: you are the ACTIVE SHORT-TERM TRADER (account D). You are reviewed up to 5 times a day (10:00, 11:30, 13:00, 14:30 and a closing review at 15:30 ET) and think in hours to a few days.
 - Target moves of roughly +1% to +3%; cut losers fast (about -1.5%; the code force-sells at -3%). Use the intraday data: position inside today's range, the last-60-minute change, move vs the open.
@@ -226,8 +228,13 @@ def build_messages(payload):
              + ("no per-position cap: you decide how concentrated to be, limited only by the cash available." if p["weight_cap"] >= 1 else f"weight cap per position {p['weight_cap']:.0%}."),
              "Rules: " + "; ".join(p["rules"])]
     if p.get("invested_pct") is not None:
-        target = {"long": "target about 80% invested / 20% cash", "short": "target roughly 50-90% invested while the market is open", "aggr": "target 85-100% invested"}[p["horizon"]]
+        target = {"long": "target about 90% invested / about 10% cash reserve", "short": "target roughly 50-90% invested while the market is open", "aggr": "target 85-100% invested"}[p["horizon"]]
         lines.append(f"CURRENT INVESTED SHARE: {p['invested_pct']:.0%} of equity in stocks, {1 - p['invested_pct']:.0%} cash ({target}).")
+    if p.get("regime"):
+        g = p["regime"]
+        lines += ["", f"MARKET REGIME: SPY ${g['spy']:.2f}, {g['vs_sma50']:+.1%} vs its 50-day average, "
+                  + ("n/a" if g["vs_sma200"] is None else f"{g['vs_sma200']:+.1%} vs its 200-day average") + f", 20-day momentum {g['mom20']:+.1%}. "
+                  f"{g['uptrend']} of {g['n']} tracked stocks are in an uptrend (price above SMA50 and SMA20 above SMA50); {g['above20']} of {g['n']} are above their SMA20."]
     lines += ["", "POSITIONS:"]
     lines += [f"- {x['symbol']}: {x['shares']} sh, cost ${x['avg_cost']:.2f}, now ${x['price']:.2f} ({x['pnl_pct']:+.1%}), held {x['held_days']}d"
               for x in p["positions"]] or ["- (none)"]

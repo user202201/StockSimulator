@@ -71,7 +71,7 @@ RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free 
 RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
-PROMPT_VER = {"long": 2, "short": 2, "aggr": 0}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
+PROMPT_VER = {"long": 3, "short": 2, "aggr": 0}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
 E_DEFAULT_CAP, E_RESERVE = 60, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
     "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
@@ -96,10 +96,10 @@ ACCOUNTS = {
                "最多同时持有 6 只，仓位按波动率调整（每只 8%–25%），总仓位最多 95%，每只股票每天最多买一次",
                "卖出：止盈 0.8 倍日波动（1%–3%，小赢就走）/ 止损 1.0 倍日波动（1%–3.5%）/ 收盘前确认跌破 20 日线 1% / 持有满 7 天（约 5 个交易日）后在收盘前换仓；不再每天清仓，盈亏都可以过夜"]),
     "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:00），持有数天到数周",
-        desc="每天开盘半小时后，AI 读取 21 只股票的行情指标和最新新闻标题，自己判断买什么、卖什么、仓位多少。",
+        desc="「波段投资者」：每天一次读取日线行情指标、大盘环境和最新新闻。先判断整体趋势，趋势向上就重仓（约 90%），只留少量现金（约 10%）补仓或应急；主要依据趋势买入，持有数天到数周，趋势没坏就拿着。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
                "代码只保留基本风控：买入后至少持有 2 天，亏损 10% 强制止损；不限制持仓只数、选股和单只仓位（可以集中持有一只，也可以分散）",
-               "资金使用（软性要求，不强制）：波段投资者通常保持 70%–90% 仓位，现金超过 30% 时 AI 需要说明理由"]),
+               "资金使用（软性要求，不强制）：趋势向上时约 90% 投入、约 10% 现金（用于回调补仓和应急）；现金超过 20% 时 AI 必须说明理由（例如大盘趋势走坏）"]),
     "ai_short": dict(name="D AI 短线", kind="ai_short", style="AI + 新闻 · 短线", freq="每天 5 次（美东 10:00 / 11:30 / 13:00 / 14:30 / 15:30 收盘复盘），可隔夜持有",
         desc="一天内多次复盘，AI 结合当天走势和新闻做短线交易；15:30 的收盘复盘由 AI 决定每个仓位留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
@@ -487,6 +487,18 @@ def decide_random(acct, env):
 
 
 # ---------- AI traders ----------
+def regime_rows(closes):
+    """Market-wide trend summary for the AI: SPY vs its averages and how many of the tracked stocks are in an uptrend."""
+    spy = closes.get(BENCH)
+    if not spy or len(spy) < 60:
+        return None
+    stocks = [c for s_, c in closes.items() if s_ not in (BENCH, "QQQ") and len(c) >= 51]
+    up = sum(1 for c in stocks if uptrend(c))
+    a20 = sum(1 for c in stocks if c[-1] > sma(c, 20))
+    s200 = sma(spy, 200)
+    return {"spy": spy[-1], "vs_sma50": spy[-1] / sma(spy, 50) - 1, "vs_sma200": (spy[-1] / s200 - 1) if s200 else None,
+            "mom20": spy[-1] / spy[-21] - 1, "n": len(stocks), "uptrend": up, "above20": a20}
+
 def market_rows(closes, ctx, intraday=None):
     rows = []
     for s in UNIVERSE:
@@ -576,7 +588,7 @@ def decide_ai(acct, env, p):
     invested = sum(x["shares"] * prices.get(s, x["avg_cost"]) for s, x in pos_map.items()) / eq if eq else 0
     payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq, "invested_pct": invested,
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
-               "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "news": news}
+               "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "regime": regime_rows(closes), "news": news}
     messages = aimod.build_messages(payload)
     st["attempts"][key] = st["attempts"].get(key, 0) + 1
     h = env["health_ai"]

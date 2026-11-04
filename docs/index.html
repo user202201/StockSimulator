@@ -134,10 +134,10 @@ rule_short:{n:['B 日内规则','B Short-term rules','B Règles court terme'],s:
     ['最多同时持有 6 只，仓位按波动率调整（每只 8%–25%），总仓位最多 95%，每只股票每天最多买一次','Max 6 positions, volatility-adjusted sizes (8%–25% each), total exposure up to 95%, one buy per stock per day','6 positions max, tailles ajustées à la volatilité (8–25 % chacune), exposition totale jusqu\'à 95 %, un achat par action et par jour'],
     ['卖出：止盈 0.8 倍日波动（1%–3%，小赢就走）/ 止损 1.0 倍日波动（1%–3.5%）/ 收盘前确认跌破 20 日线 1% / 持有满 7 天（约 5 个交易日）后收盘前换仓；不再每天清仓，盈亏都可以过夜','Sell: take profit at 0.8x daily volatility (1%–3%: small wins) / stop at 1.0x daily volatility (1%–3.5%) / 1% below the 20-day avg confirmed near the close / rotate after 7 days (about 5 trading days); no daily flatten, positions may stay overnight either way','Vente : profit à 0,8 x la volatilité (1–3 % : petits gains) / stop à 1,0 x la volatilité (1–3,5 %) / 1 % sous la moy. 20 j confirmé près de la clôture / rotation après 7 jours (≈5 séances) ; pas de liquidation quotidienne']]},
 ai_long:{n:['C AI 稳健','C AI Swing','C IA Swing'],s:['AI + 新闻 · 中线','AI + news · swing','IA + actualités · moyen terme'],f:['每天 1 次（美东 10:00），持有数天到数周','Once a day (10:00 ET), holds days to weeks','Une fois par jour (10:00 ET), détient jours à semaines'],
- d:['「波段投资者」：每天一次读取日线行情指标和最新新闻，顺势买入上升趋势或有明确催化的股票，不必等回调，保持较高仓位（通常 70%–90%）。','"Swing investor": reads daily-bar indicators and the latest news once a day; buys stocks in an uptrend or with a clear catalyst without waiting for a pullback, and stays well invested (typically 70%–90%).','« Investisseur swing » : lit une fois par jour les indicateurs journaliers et l\'actualité ; achète les actions en tendance haussière ou avec un catalyseur clair sans attendre un repli, et reste bien investi (en général 70–90 %).'],
+ d:['「波段投资者」：每天一次读取日线行情指标、大盘环境和最新新闻。先判断整体趋势，趋势向上就重仓（约 90%），只留少量现金（约 10%）补仓或应急；主要依据趋势买入，持有数天到数周，趋势没坏就拿着。','"Swing investor": once a day it reads daily-bar indicators, the market regime and the latest news. It judges the overall trend first; when the trend is up it is heavily invested (about 90%) and keeps only a small cash reserve (about 10%) for adding and emergencies; it buys mainly on trend, holds for days to weeks and keeps positions while the trend holds.','« Investisseur swing » : une fois par jour il lit les indicateurs journaliers, le régime de marché et l\'actualité. Il juge d\'abord la tendance globale ; quand elle est haussière il est fortement investi (≈90 %) et ne garde qu\'une petite réserve (≈10 %) pour renforcer ou faire face aux imprévus ; il achète surtout sur la tendance et garde tant qu\'elle tient.'],
  r:[['AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由','The AI decides freely, must cite news ids and must write a bull and a bear case before buying','L\'IA décide librement, doit citer des identifiants d\'actualité et écrire un argument haussier et un baissier avant d\'acheter'],
     ['代码只保留基本风控：买入后至少持有 2 天，亏损 10% 强制止损；不限制持仓只数、选股和单只仓位（可以集中持有一只，也可以分散）','Code keeps only basic risk control: 2-day minimum hold and a forced -10% stop. No limit on the number of positions, on stock choice or on position size (it may concentrate in one stock or diversify)','Le code ne garde que le contrôle du risque de base : détention min. 2 jours et stop forcé -10 %. Pas de limite de positions, de choix de titres ni de taille de position (peut se concentrer sur une action ou se diversifier)'],
-    ['资金使用（软性要求，不强制）：波段投资者通常保持 70%–90% 仓位，现金超过 30% 时 AI 需要说明理由','Capital use (soft guidance, not enforced): a swing investor is normally 70–90% invested; with more than 30% cash the AI must explain why','Usage du capital (indication, non imposée) : un investisseur swing est en général investi à 70–90 % ; au-delà de 30 % de liquidités, l\'IA doit s\'expliquer']]},
+    ['资金使用（软性要求，不强制）：趋势向上时约 90% 投入、约 10% 现金（用于回调补仓和应急）；现金超过 20% 时 AI 必须说明理由（例如大盘趋势走坏）','Capital use (soft guidance, not enforced): with the trend up, about 90% invested and about 10% cash (for adding on pullbacks and emergencies); with more than 20% cash the AI must explain why (e.g. a broken market trend)','Usage du capital (indication, non imposée) : tendance haussière = ≈90 % investi et ≈10 % de liquidités (renforcer sur repli, imprévus) ; au-delà de 20 % de liquidités l\'IA doit s\'expliquer (ex. tendance de marché dégradée)']]},
 ai_short:{n:['D AI 短线','D AI Short-term','D IA Court terme'],s:['AI + 新闻 · 短线','AI + news · short-term','IA + actualités · court terme'],f:['每天 5 次（美东 10:00 / 11:30 / 13:00 / 14:30 / 15:30 收盘复盘），可隔夜持有','5 times a day (10:00 / 11:30 / 13:00 / 14:30 / closing review 15:30 ET), may hold overnight','5 fois par jour (10:00 / 11:30 / 13:00 / 14:30 / revue de clôture 15:30 ET), peut garder la nuit'],
  d:['「活跃短线交易员」：一天多次复盘，结合盘中走势和新鲜新闻做短线交易；15:30 的收盘复盘由 AI 决定每个仓位留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。','"Active short-term trader": reviews several times a day, combining intraday moves with fresh news; at the 15:30 closing review the AI decides for each position whether to carry it overnight or sell, and may add buys based on the day\'s news.','« Trader court terme actif » : plusieurs revues par jour, combine mouvements intrajournaliers et actualité fraîche ; à la revue de clôture de 15:30 l\'IA décide pour chaque position de la garder la nuit ou de la vendre, et peut acheter selon l\'actualité du jour.'],
  r:[['AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由','The AI decides freely, must cite news ids and must write a bull and a bear case before buying','L\'IA décide librement, doit citer des identifiants d\'actualité et écrire un argument haussier et un baissier avant d\'acheter'],
@@ -198,9 +198,9 @@ const TPL=[
 TPL.forEach(r=>add(r[0],r[1],r[2],r[3]));
 /* UI strings */
 const U=[
-['rf.auto','自动刷新已开启（每分钟检查）','Auto-refresh is on (checks every minute)','Actualisation automatique activée (chaque minute)'],['rf.updated','🔄 数据已更新','🔄 Data updated','🔄 Données mises à jour'],['rf.reload','🔄 页面有新版本，正在刷新…','🔄 New version of the page, reloading…','🔄 Nouvelle version de la page, rechargement…'],
+['rf.auto','自动刷新已开启（每分钟检查）','Auto-refresh is on (checks every minute)','Actualisation automatique activée (chaque minute)'],['rf.checked','上次检查数据','Last data check','Dernière vérification'],['rf.updated','🔄 数据已更新','🔄 Data updated','🔄 Données mises à jour'],['rf.reload','🔄 页面有新版本，正在刷新…','🔄 New version of the page, reloading…','🔄 Nouvelle version de la page, rechargement…'],
 ['mkt.spy','标普500 · SPY','S&P 500 · SPY','S&P 500 · SPY'],['mkt.qqq','纳指100 · QQQ','Nasdaq 100 · QQQ','Nasdaq 100 · QQQ'],['mkt.ai','AI 概念股平均（今日）','AI stocks average (today)','Moyenne actions IA (jour)'],
-['mkt.time','行情时间','Quote time','Heure des cours'],['mkt.refresh','每 15 分钟更新一次','Refreshed every 15 min','Actualisé toutes les 15 min'],
+['mkt.time','行情时间','Quote time','Heure des cours'],['mkt.refresh','每 15 分钟更新一次，页面自动同步','Refreshed every 15 min, the page syncs by itself','Actualisé toutes les 15 min, la page se synchronise seule'],
 ['b.demo','⚠️ 当前为<b>离线演示数据</b>（随机生成的价格），机器人首次真实运行后会自动替换。','⚠️ Showing <b>offline demo data</b> (random prices); it is replaced automatically after the bot\'s first real run.','⚠️ <b>Données de démonstration</b> (prix aléatoires) ; remplacées automatiquement après le premier vrai passage du bot.'],
 ['b.fail','🚨 机器人最近连续失败 {n} 次：{e}','🚨 The bot failed {n} times in a row: {e}','🚨 Le bot a échoué {n} fois de suite : {e}'],['b.note','ℹ️ 最近一次运行有数据问题：{e}','ℹ️ Data issue in the latest run: {e}','ℹ️ Problème de données lors de la dernière exécution : {e}'],
 ['b.ai','🤖 AI 状态：{e}','🤖 AI status: {e}','🤖 État de l\'IA : {e}'],['b.stale','⏱ 已超过 {n} 个工作日没有成功更新（可能是休市日，也可能是机器人停了，请检查 Actions）。','⏱ No successful update for {n} business day(s) (market holiday, or the bot stopped — check Actions).','⏱ Aucune mise à jour réussie depuis {n} jour(s) ouvré(s) (jour férié ou bot arrêté — vérifiez Actions).'],
@@ -379,9 +379,11 @@ function banners(){let h='';const hl=S.health||{};
     for(let x=new Date(d.getTime()+864e5);x<new Date(now.toDateString());x=new Date(x.getTime()+864e5))if(x.getDay()%6)miss++;
     if(miss>=1)h+=`<div class="banner warn">${t('b.stale',{n:miss})}</div>`}
   $('banner').innerHTML=h}
+let LAST_CHECK=null;
+function chkTxt(){return LAST_CHECK?t('rf.checked')+' '+LAST_CHECK.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}):''}
 function header(){
   $('ttl').textContent=t('title');const ai=S.health?.ai||{};
-  $('upd').innerHTML=`${t('init')} ${usd(S.initial_cash)}<br>${t('updated')}: ${S.updated?fmtT(S.updated):'—'}<br>${t('ai')}: ${S.demo?t('ai.demo'):((ai.configured||[]).join(' → ')||t('ai.none'))}${ai.last_ok?`<br>${t('ai.ok')}: ${fmtT(ai.last_ok)}`:''}<br><span class="sm">🔄 ${t('rf.auto')}</span>`;
+  $('upd').innerHTML=`${t('init')} ${usd(S.initial_cash)}<br>${t('updated')}: ${S.updated?fmtT(S.updated):'—'}<br>${t('ai')}: ${S.demo?t('ai.demo'):((ai.configured||[]).join(' → ')||t('ai.none'))}${ai.last_ok?`<br>${t('ai.ok')}: ${fmtT(ai.last_ok)}`:''}<br><span class="sm">🔄 ${t('rf.auto')}</span><br><span class="sm mut" id="chk">${chkTxt()}</span>`;
   document.documentElement.lang=LANG;document.title=t('title').replace('📈 ','')}
 
 /* ============================ shared tables ============================ */
@@ -708,7 +710,7 @@ $('dx').onclick=()=>$('dlg').close();$('dlg').onclick=e=>{if(e.target===$('dlg')
 window.onhashchange=route;
 applyTheme();mkTF();$('ttl').textContent=t('title');$('upd').textContent=t('loading');settingsUI();
 /* ---- live refresh: poll for new data (and for a new version of this page) ---- */
-const POLL_MS=(+new URLSearchParams(location.search).get('poll')||60)*1000;
+const POLL_MS=(+new URLSearchParams(location.search).get('poll')||30)*1000;
 let LAST_TXT='',PAGE_TAG=null,POLLING=false,TOAST_T=null;
 async function pageTag(){try{const r=await fetch(location.pathname+'?v='+Date.now(),{method:'HEAD',cache:'no-store'});return r.headers.get('etag')||r.headers.get('last-modified')}catch(e){return null}}
 function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('on');clearTimeout(TOAST_T);TOAST_T=setTimeout(()=>el.classList.remove('on'),2800)}
@@ -719,6 +721,7 @@ async function poll(){
   if(POLLING||document.hidden||!S)return;POLLING=true;
   try{
     const r=await fetch('data/state.json?'+Date.now(),{cache:'no-store'});
+    LAST_CHECK=new Date();const ce=$('chk');if(ce)ce.textContent=chkTxt();
     if(r.ok){const txt=await r.text();
       if(txt!==LAST_TXT){LAST_TXT=txt;S=JSON.parse(txt);header();marketStrip();banners();
         if(canRerender()){const y=window.scrollY;render();window.scrollTo(0,y)}else nav(ROUTE);

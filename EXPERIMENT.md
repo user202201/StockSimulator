@@ -74,3 +74,8 @@ A, follow-up (same day): trend follower made consistent with its label — entri
 Owner's direction: B is A at a faster pace (small, steady wins, quick turnover), may stand aside but not for long, no daily flatten.
 Change: B trades only trend stocks with the market regime filter (SPY above its 200-day average); take-profit 0.8x and stop 1.0x daily volatility (1%-3% / 1%-3.5%); dip/breakout thresholds scale with volatility; exposure cap 95%; exits also on a 2% break of the 50-day average (confirmed near the close) and after 7 calendar days (rotation). The end-of-day cut (sell everything not in profit) is removed.
 B, follow-up: decisions must be independent from A. B ranked candidates by A's 60-day momentum and used A's 50-day trend test, so both bought the same stocks. Now B uses its own short-horizon view: price above a rising 20-day average, candidates ranked by how unusual today's move is (in daily-volatility units), trend exit at 1% below the 20-day average. A stays the slow, long-horizon trend follower.
+
+### 2026-11-04 — Per-trader review, step 3: C (AI swing investor)
+Finding: C bought on catalysts/bounces (ORCL, AMD) and chased the post-election spike, had no market-regime input, a 70-90% invested target and no stated purpose for the reserve.
+Change (prompt v3, one re-review): MARKET REGIME block (SPY vs 50/200-day, share of stocks in an uptrend) added to every AI prompt; C must state its view of the overall trend first, buys mainly on trend (catalysts only support), target about 90% invested with a ~10% reserve used to add on pullbacks and for emergencies, >20% cash needs a stated reason. No code-level floor yet; revisit after a few days of data.
+Dashboard: data-check timestamp shown in the sidebar, poll every 30 s.
