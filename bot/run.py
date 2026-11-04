@@ -16,7 +16,7 @@ stale / anomalous quote protection, long-only, fractional shares.
 """
 import copy, json, math, os, random, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +50,7 @@ NY = ZoneInfo("America/New_York")
 
 # rule_long (A)
 A_MAX_POS, A_WEIGHT, A_HARD_STOP, A_TRAIL = 6, 0.25, 0.07, 0.08
+A_SMA_BUFFER, A_COOLDOWN_DAYS = 0.02, 3   # A: trend counts as broken only 2% below the 50-day average; no re-buy for 3 days after a sale (anti-whipsaw)
 A_MAX_EXPOSURE = 0.95                                  # A: never invest more than this share of equity (the rest is the cash buffer)
 A_VOL_TARGET, A_W_MIN, A_W_MAX = 0.004, 0.10, 0.30   # A: volatility-targeted sizing: weight = target / daily vol, clamped (calmer stocks get more)
 # rule_short (B)
@@ -81,8 +82,8 @@ ACCOUNTS = {
         desc="完全按预设条件买卖，没有 AI。顺势而为：股价站上 50 日均线、短期强于中期、动量为正时买入。",
         rules=["买入：现价>50日均线，20日均线>50日均线，20日动量>0，RSI<75，且 SPY 在 200 日均线之上",
                "最多同时持有 6 只，按 60 日动量排序选股；仓位按波动率调整（波动越大买得越少，每只 10%–30%），总仓位最多 95%",
-               "卖出：亏损 7% 止损 / 从最高点回撤 8% / 跌破 50 日均线",
-               "同一天买入的股票当天不卖，卖出后当天不再买回"]),
+               "卖出：亏损 7% 止损 / 从最高点回撤 8% / 跌破 50 日均线 2%（留 2% 缓冲，避免来回折腾）",
+               "同一天买入的股票当天不卖；卖出后 3 天内不再买回"]),
     "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线", freq="每 15 分钟检查，可一天多次交易，有盈利的可留仓过夜",
         desc="完全按预设条件做短线：趋势向上的股票盘中回调时低吸、走强时顺势跟进，涨一点就卖；收盘前把没盈利的卖掉，有盈利的留过夜。没有 AI。",
         rules=["买入：10:00–15:30 之间，上升趋势股票（现价>50日均线且20日均线>50日均线），满足其一：①较今日开盘价回落 ≥1.2%（低吸）；②较开盘上涨 1%–6% 且处在当日区间上沿（顺势追强）；且 SPY 当日跌幅没有超过 1.5%",
@@ -211,7 +212,7 @@ def exit_check(pos, c):
     hard, trail, s50 = pos["avg_cost"] * (1 - A_HARD_STOP), pos["peak"] * (1 - A_TRAIL), sma(c, 50)
     rules = [("r.hard_stop", p <= hard, K("c.hard", p=f"${p:.2f}", op="≤" if p <= hard else ">", lvl=f"${hard:.2f}", cost=f"${pos['avg_cost']:.2f}")),
              ("r.trail_stop", p <= trail, K("c.trail", p=f"${p:.2f}", op="≤" if p <= trail else ">", lvl=f"${trail:.2f}", peak=f"${pos['peak']:.2f}")),
-             ("r.below_sma50", p < s50, K("c.sma50_exit", p=f"${p:.2f}", op="<" if p < s50 else "≥", s=f"${s50:.2f}"))]
+             ("r.below_sma50", p < s50 * (1 - A_SMA_BUFFER), K("c.sma50_exit", p=f"${p:.2f}", op="<" if p < s50 * (1 - A_SMA_BUFFER) else "≥", s=f"${s50 * (1 - A_SMA_BUFFER):.2f}"))]
     return next((K(n) for n, hit, _ in rules if hit), None), [{"text": txt, "ok": h} for _, h, txt in rules]
 
 
@@ -329,7 +330,8 @@ def decide_rule_long(acct, env):
     if BENCH not in closes or not market_regime_ok(closes):
         return
     pend_buys = {o["symbol"] for o in acct["pending"] if o["side"] == "BUY"}
-    sold_today = {t["symbol"] for t in acct["trades"] if t["side"] == "SELL" and et_date(t["time"]) == today}
+    cool = {(date.fromisoformat(today) - timedelta(days=d)).isoformat() for d in range(A_COOLDOWN_DAYS + 1)}
+    sold_today = {t["symbol"] for t in acct["trades"] if t["side"] == "SELL" and et_date(t["time"]) in cool}
     skip = set(acct["positions"]) | pend_buys | sold_today
     cands = sorted([(entry_score(closes[s]), s) for s in UNIVERSE if s in closes and s not in skip
                     and entry_score(closes[s]) is not None], reverse=True)

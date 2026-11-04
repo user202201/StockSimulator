@@ -64,3 +64,7 @@
 - 2026-11-04：**仓位不再等额、也不再有统一的单只上限**。A、B 的仓位按波动率调整（A 每只 10%–30%，B 8%–25%，波动越大买得越少）；随机账户每次买入 10%–30% 随机；C、D、E 取消单只仓位上限（可以把大部分资金压在一只股票上），提示词要求按把握和风险定仓位，不要平均分配。限制只剩下可用资金、只做多、不加杠杆（以及各自的止损等基本风控）。SPY、等权两个基准按定义保持不变。
 - 2026-11-04：AI 调用增加自动降级：主模型出问题时依次尝试其他 Flash 型号，最后才用 Flash-Lite；Gemini 全部失败时才用可选的备用服务商。每条决策都记录实际回答的模型。降级只在出错时发生，不改变主模型的固定选择。
 - 2026-11-04（太保守的修正）：开盘首日是强势上涨，C、D 因“不追涨、等回调”整日观望，B 因只做回调低吸而空仓，使模拟几乎没有数据。调整：**C** 不再要求等回调，仓位低于 70% 且有合适机会时应分批建仓；**D** 增加顺势跟进强势股，并要求每轮有空闲现金时通常至少开一个新仓；**B** 增加第二种入场（较开盘涨 1%–6% 且贴近日内高点的顺势跟进），最多 6 只；**A** 最多 6 只，总仓位上限 95%。
+
+### 2026-11-04 — Per-trader review, step 1: A (trend rules)
+Finding: AAPL bought 11-02, sold 11-03 on a bare 50-day-average break (-$32), re-bought 11-04 7.6% higher: whipsaw, not "days to weeks".
+Change: the 50-day exit needs a 2% buffer; no re-buy for 3 days after a sale. Next in the review: B, then C (target: heavy invested share, small reserve), D, E.
