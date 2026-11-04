@@ -36,6 +36,8 @@ def providers():
 class Client:
     def __init__(self, pinned=None):
         self.deadline = time.time() + float(os.environ.get("AI_RUN_BUDGET_S", "480"))   # wall-clock budget for all AI calls of one run
+        self.min_gap = float(os.environ.get("AI_MIN_GAP_S", "15"))   # seconds between two requests: bursts trigger per-minute 429s on the free tier
+        self.last_call = 0.0
         self.http_calls = 0                  # answered requests (for the daily quota bookkeeping)
         self.daily_quota_hit = False         # set when the provider reports its per-day quota is exhausted
         self.providers = providers()
@@ -161,6 +163,10 @@ class Client:
             left = self.time_left()
             if left < 10:
                 raise ApiError(0, "run time budget exhausted")
+            wait = self.min_gap - (time.time() - self.last_call)
+            if wait > 0 and left - wait > 10:
+                time.sleep(wait)
+            self.last_call = time.time()
             try:
                 out = self._open(req, timeout=min(120, left))["choices"][0]["message"]["content"]
                 self.http_calls += 1               # only answered requests count: failed (503/429) calls do not use up the free quota
@@ -170,8 +176,8 @@ class Client:
                     self.daily_quota_hit = True
                 if e.code == 400 and extras and "reasoning" in e.body.lower():
                     extras = {}; continue                      # this model rejects reasoning_effort
-                if e.code == 429 and attempt < 2:
-                    time.sleep(25); continue
+                if e.code == 429 and attempt < 1 and not self.daily_quota_hit:
+                    time.sleep(35); continue            # per-minute limit: wait it out once, then let the ladder try another model
                 raise
 
 
