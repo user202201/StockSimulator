@@ -64,6 +64,7 @@ RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free 
 RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
+PROMPT_VER = {"long": 2, "short": 2, "aggr": 0}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
 E_DEFAULT_CAP, E_RESERVE = 60, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
     "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
@@ -498,6 +499,8 @@ def decide_ai(acct, env, p):
     st = acct["ai"]
     st["done"] = [k for k in st["done"] if k.startswith(today)]
     st["attempts"] = {k: v for k, v in st["attempts"].items() if k.startswith(today)}
+    if st.get("pv", 0) < PROMPT_VER.get(p["horizon"], 0):        # the prompt was changed: review again now instead of waiting for the next scheduled round
+        st["pv"], st["done"], st["attempts"] = PROMPT_VER[p["horizon"]], [], {}
     due = [r for r in p["rounds"] if hm >= r]
     if not due or env["ai"] is None or (p["flatten"] and hm >= p["flatten"]):
         return
