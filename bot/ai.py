@@ -200,7 +200,7 @@ HORIZON = {
     "long": """ROLE: you are the PATIENT SWING TRADER (account C). You are reviewed ONCE per day and think in days to weeks.
 - Typical holding period 3-15 trading days. Ignore intraday noise; you do not see intraday data on purpose.
 - Buy stocks in an established uptrend (price above SMA20 and SMA50) or with a clear multi-day catalyst. A pullback is a nice entry but you do NOT have to wait for one: a strong trend with good news can be bought now. Avoid only names that are truly overextended (RSI above ~80 or far above SMA20) without a catalyst.
-- Capital deployment: a swing investor is normally 70-90% invested, with a 10-30% cash reserve for opportunities. If you are below 70% invested and there are decent setups, you should put a meaningful part of the idle cash to work in this review (scale in; do not wait for the perfect entry or for a pullback that may never come). Staying above 30% cash is only acceptable with a concrete reason (no real setups, clear market-wide risk) that you state in the summary; 'waiting for a pullback' alone is not enough after a strong rally.
+- Capital deployment (the 80/20 rule): your target is about 80% invested and 20% cash reserve (anything from 70% to 90% invested is fine). The prompt tells you your CURRENT invested share; when it is well below target you are expected to ADD to the portfolio in this review. If you are below 70% invested and there are decent setups, you should put a meaningful part of the idle cash to work in this review (scale in; do not wait for the perfect entry or for a pullback that may never come). Staying above 30% cash is only acceptable with a concrete reason (no real setups, clear market-wide risk) that you state in the summary; 'waiting for a pullback' alone is not enough after a strong rally.
 - Prefer concentrated, high-conviction positions over many small ones; the number of names is up to you.
 - Sell when the thesis is broken (trend broken, catalyst failed) or a multi-day target is reached; do not sell on small dips.""",
     "short": """ROLE: you are the ACTIVE SHORT-TERM TRADER (account D). You are reviewed up to 5 times a day (10:00, 11:30, 13:00, 14:30 and a closing review at 15:30 ET) and think in hours to a few days.
@@ -224,7 +224,11 @@ def build_messages(payload):
              f"Equity ${p['equity']:.2f}, settled cash available ${p['cash']:.2f}. "
              + ("No fixed limit on the number of positions, " if p["max_positions"] >= 50 else f"Max positions {p['max_positions']}, ")
              + ("no per-position cap: you decide how concentrated to be, limited only by the cash available." if p["weight_cap"] >= 1 else f"weight cap per position {p['weight_cap']:.0%}."),
-             "Rules: " + "; ".join(p["rules"]), "", "POSITIONS:"]
+             "Rules: " + "; ".join(p["rules"])]
+    if p.get("invested_pct") is not None:
+        target = {"long": "target about 80% invested / 20% cash", "short": "target roughly 50-90% invested while the market is open", "aggr": "target 85-100% invested"}[p["horizon"]]
+        lines.append(f"CURRENT INVESTED SHARE: {p['invested_pct']:.0%} of equity in stocks, {1 - p['invested_pct']:.0%} cash ({target}).")
+    lines += ["", "POSITIONS:"]
     lines += [f"- {x['symbol']}: {x['shares']} sh, cost ${x['avg_cost']:.2f}, now ${x['price']:.2f} ({x['pnl_pct']:+.1%}), held {x['held_days']}d"
               for x in p["positions"]] or ["- (none)"]
     f = lambda v, pc=True: "n/a" if v is None else (f"{v:+.1%}" if pc else f"{v:.0f}")

@@ -533,7 +533,8 @@ def decide_ai(acct, env, p):
         rules.append("positions MAY be held overnight (gap risk); the 15:30 ET review is the last chance to trade today; no new buys after 15:45 ET")
     if acct.get("instant"):
         rules.append("sale proceeds are available immediately for new buys, so you can rotate within a review")
-    payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq,
+    invested = sum(x["shares"] * prices.get(s, x["avg_cost"]) for s, x in pos_map.items()) / eq if eq else 0
+    payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq, "invested_pct": invested,
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
                "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "news": news}
     messages = aimod.build_messages(payload)
