@@ -14,7 +14,7 @@ stale / anomalous quote protection, long-only, fractional shares.
 
   python bot/run.py          live      python bot/run.py --demo   offline demo with synthetic data
 """
-import copy, json, math, os, random, sys, urllib.request
+import copy, json, math, os, random, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -72,14 +72,15 @@ RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
 PROMPT_VER = {"long": 3, "short": 3, "aggr": 1}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
+AI_SPACING_S = 300   # if another account asked the AI within the last 5 min, this review waits for the next run (once per review, so nothing starves)
 E_DEFAULT_CAP, E_RESERVE = 200, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
     "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
-                "rounds": [(10, 30)], "news_age": 36, "flatten": None, "no_new_after": None, "reentry": True},
+                "prio": 2, "rounds": [(10, 30)], "news_age": 36, "flatten": None, "no_new_after": None, "reentry": True},
     "ai_short": {"horizon": "short", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.03, "min_hold": 0, "max_buys": NO_LIMIT,
-                 "rounds": [(10, 0), (11, 30), (13, 0), (14, 30), (15, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45), "reentry": True},
+                 "prio": 0, "rounds": [(10, 0), (11, 30), (13, 0), (14, 30), (15, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45), "reentry": True},
     "ai_aggr": {"horizon": "aggr", "max_pos": NO_LIMIT, "cap": 1.0, "stop": None, "min_hold": 0, "max_buys": NO_LIMIT,
-                "rounds": [(h, m) for h in range(10, 15) for m in (15, 45)] + [(15, 15)], "news_age": 8, "flatten": None, "no_new_after": (15, 45),
+                "prio": 1, "rounds": [(h, m) for h in range(10, 15) for m in (15, 45)] + [(15, 15)], "news_age": 8, "flatten": None, "no_new_after": (15, 45),
                 "reentry": True, "budget": True},
 }
 
@@ -567,6 +568,14 @@ def decide_ai(acct, env, p):
         st["paused"] = None
     if hasattr(env["ai"], "time_left") and env["ai"].time_left() < 40:     # this run has used up its AI time budget: try again next run (no attempt used)
         return
+    last = getattr(env["ai"], "last_call", 0)
+    dfr = st.setdefault("deferred", {})
+    for k in [k for k in dfr if not k.startswith(today)]:
+        del dfr[k]
+    if last and time.time() - last < AI_SPACING_S and key not in dfr:      # another account just used the AI: this review waits for the next run, once
+        dfr[key] = ts
+        print(f"defer {p['horizon']} review {key}: another account just used the AI, waits for the next run")
+        return
     news = env["news"](p["news_age"])
     pend = {o["symbol"] for o in acct["pending"]}
     eq = equity_of(acct, prices)
@@ -756,7 +765,7 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None):
         return used < cap
     env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai, "intraday": intra["px"], "state": state, "budget_ok": budget_ok,
            "health_ai": state["health"].setdefault("ai", {})}
-    for aid, acct in state["accounts"].items():
+    for aid, acct in sorted(state["accounts"].items(), key=lambda kv: AI_PARAMS.get(kv[0], {}).get("prio", -1)):   # D first, then E, then C: the most time-critical review gets the AI first
         settle(acct, ts)
         fill_pending(acct, prices, set(closes), ts)
         KIND[acct["kind"]](acct, env)
