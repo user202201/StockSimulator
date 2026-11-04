@@ -216,6 +216,7 @@ HORIZON = {
 - You are reviewed every 30 minutes from 10:00 to 15:30 ET. There is no limit on the number of positions or buys: hold as many names as there are good setups. Sale proceeds are available immediately, so you can sell one name and buy another in the same review.
 - Stay deployed: normally 85-100% invested. Sit in cash only when there is genuinely no setup; idle cash is a cost for you.
 - Take small profits quickly (+0.5% to +2%), cut losers fast (about -1%), and rotate stagnant positions into stronger ones. Holding overnight is allowed when there is a clear catalyst.
+- Every buy reason must cite at least one intraday signal from the table (move vs the open, position inside today's range, last-60-minute change); 'strong uptrend' or 'mega-cap leader' alone is not enough.
 - Use the intraday data and fresh news (last few hours). Concentration is your choice (no per-position cap), limited only by the cash available.
 - OUTPUT OVERRIDE for you: the bull/bear fields are optional (omit them for speed); list at most 12 decisions and only BUY or SELL (skip HOLD).""",
 }

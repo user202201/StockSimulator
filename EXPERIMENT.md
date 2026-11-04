@@ -83,3 +83,8 @@ Dashboard: data-check timestamp shown in the sidebar, poll every 30 s.
 ### 2026-11-04 — Per-trader review, step 4: D (AI short-term trader)
 Finding: D's buys on the post-election spike (AAPL/MSFT) were justified by "mega-cap leader", the same story as C and E; its closing (15:30) review had not run yet in live conditions; the description lacked an expected profile.
 Change (prompt v3, one re-review): every D buy must cite an intraday signal (move vs open, position in today's range, last-60-minute change); daily trend alone is C's domain. Description states the profile (+1-3% targets, about -1.5% cut, hours to days, 50-90% invested). To verify: today's 15:30 review gives a carry/sell decision for each position.
+
+### 2026-11-04 — Per-trader review, step 5: E (AI aggressive, high turnover)
+Finding: E behaves as designed (fully invested, sells one name and buys another in the same review with instant proceeds) but the page could not measure the point of the experiment, whether higher turnover is more efficient.
+Change: comparison table gains trades per day, average holding time in hours, average net P&L per closed trade, trading cost (fees + estimated slippage) and capital efficiency (return / turnover) for every trader; E's prompt (v1, one re-review) requires every buy reason to cite an intraday signal, like D; E's description states its profile (12 reviews a day, +0.5-2% targets, about -1% cut, 85-100% invested). E keeps no code stop on purpose.
+Note: on 2026-11-04 a GitHub-hosted runner queued trade #38 for 21 minutes (platform delay), so two 15-minute slots were skipped; AI rounds are slot-based and catch up on the next run.

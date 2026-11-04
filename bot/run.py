@@ -71,7 +71,7 @@ RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free 
 RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
-PROMPT_VER = {"long": 3, "short": 3, "aggr": 0}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
+PROMPT_VER = {"long": 3, "short": 3, "aggr": 1}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
 E_DEFAULT_CAP, E_RESERVE = 60, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
     "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
@@ -105,7 +105,7 @@ ACCOUNTS = {
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
                "代码只保留基本风控：亏损 3% 强制止损，15:45 后不开新仓；不限制持仓只数、选股和单只仓位（可以集中持有一只，也可以分散），按操盘手惯例自行保留一定现金"]),
     "ai_aggr": dict(name="E AI 激进", kind="ai_aggr", style="AI + 新闻 · 高周转", freq="每 30 分钟复盘（美东 10:00–15:30，约 12 次，受免费 AI 额度限制），可隔夜持有",
-        desc="从 D 克隆、更激进的版本：目标是提高资金周转率，让资金尽量一直在运转，用来测试“高周转”是否更有效率。买卖次数、持仓只数都不设限，只受免费 AI 额度限制。",
+        desc="从 D 克隆、更激进的版本：目标是提高资金周转率，让资金尽量一直在运转，用来测试“高周转”是否更有效率。预期画像：每 30 分钟复盘一次（约 12 次/天），小利 +0.5%–2% 就走，亏损约 -1% 就走，通常 85%–100% 投入，卖出款立即可用，可以卖一只马上买另一只；买卖次数、持仓只数都不设限，只受免费 AI 额度限制。",
         rules=["AI 自主决策，必须引用新闻编号；看多/看空辩论对它是可选的（为了速度）",
                "没有持仓数量限制、没有强制止损、没有每轮买入次数限制、没有单只仓位上限；只保留：只做多、不加杠杆、不能超过可用资金",
                "实验设定：卖出的钱立即可以再买，也不受 PDT 限制（相当于保证金账户的日内交易条件，但不加杠杆）——这和其他账户不同，对比时请注意",
