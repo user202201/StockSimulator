@@ -50,7 +50,10 @@ NY = ZoneInfo("America/New_York")
 
 # rule_long (A)
 A_MAX_POS, A_WEIGHT, A_HARD_STOP, A_TRAIL = 6, 0.25, 0.07, 0.08
-A_SMA_BUFFER, A_COOLDOWN_DAYS = 0.02, 3   # A: trend counts as broken only 2% below the 50-day average; no re-buy for 3 days after a sale (anti-whipsaw)
+A_SMA_BUFFER, A_COOLDOWN_DAYS = 0.02, 3
+A_DECIDE_AT = (15, 45)   # A decides on (almost) closing prices only, like a daily-bar trend follower; only the hard stop works intraday
+A_TRAIL_K, A_TRAIL_MIN, A_TRAIL_MAX, A_HARD_EXTRA = 4.0, 0.07, 0.15, 0.02   # trailing stop = 4 x daily volatility, clamped 7%-15%; hard stop = trail + 2% below cost
+A_HIGH_NEAR = 0.02       # within 2% of the 60-day high counts as a breakout (RSI limit is waived)   # A: trend counts as broken only 2% below the 50-day average; no re-buy for 3 days after a sale (anti-whipsaw)
 A_MAX_EXPOSURE = 0.95                                  # A: never invest more than this share of equity (the rest is the cash buffer)
 A_VOL_TARGET, A_W_MIN, A_W_MAX = 0.004, 0.10, 0.30   # A: volatility-targeted sizing: weight = target / daily vol, clamped (calmer stocks get more)
 # rule_short (B)
@@ -79,10 +82,10 @@ AI_PARAMS = {
 
 ACCOUNTS = {
     "rule_long": dict(name="A 趋势规则", kind="rule_long", style="规则 · 中线趋势", freq="每 15 分钟检查，持有数天到数周",
-        desc="完全按预设条件买卖，没有 AI。顺势而为：股价站上 50 日均线、短期强于中期、动量为正时买入。",
-        rules=["买入：现价>50日均线，20日均线>50日均线，20日动量>0，RSI<75，且 SPY 在 200 日均线之上",
+        desc="完全按预设条件买卖，没有 AI。典型的趋势跟随者：不预测，只跟随；强势股才买，趋势没坏就一直拿（让利润奔跑），趋势坏了或回撤超过容忍度才走（截断亏损）。预期画像：胜率不高（约 40%），靠少数大赢家赚钱，持有数周。",
+        rules=["买入（只在 15:45 收盘前确认）：现价>50日均线，20日均线>50日均线，20日动量>0，RSI<75 或接近 60 日新高（强势突破不受 RSI 限制），且 SPY 在 200 日均线之上",
                "最多同时持有 6 只，按 60 日动量排序选股；仓位按波动率调整（波动越大买得越少，每只 10%–30%），总仓位最多 95%",
-               "卖出：亏损 7% 止损 / 从最高点回撤 8% / 跌破 50 日均线 2%（留 2% 缓冲，避免来回折腾）",
+               "卖出：从最高点回撤（按个股波动调整，约 7%–15%）/ 跌破 50 日均线 2% / 亏损超过回撤线再加 2% 的硬止损；除硬止损外，都只在 15:45 收盘前确认后才执行（不被盘中噪音洗出去）",
                "同一天买入的股票当天不卖；卖出后 3 天内不再买回"]),
     "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线", freq="每 15 分钟检查，可一天多次交易，有盈利的可留仓过夜",
         desc="完全按预设条件做短线：趋势向上的股票盘中回调时低吸、走强时顺势跟进，涨一点就卖；收盘前把没盈利的卖掉，有盈利的留过夜。没有 AI。",
@@ -190,9 +193,12 @@ def entry_score(c):
     if len(c) < 61:
         return None
     p, s20, s50, r = c[-1], sma(c, 20), sma(c, 50), rsi(c)
-    if p > s50 and s20 > s50 and p / c[-21] - 1 > 0 and r < 75:
+    if p > s50 and s20 > s50 and p / c[-21] - 1 > 0 and (r < 75 or near_high(c)):
         return p / c[-61] - 1
     return None
+
+def near_high(c):
+    return len(c) >= 60 and c[-1] >= max(c[-60:]) * (1 - A_HIGH_NEAR)
 
 def entry_checks(c, spy, score, rank, slots):
     s20, s50, r, p = sma(c, 20), sma(c, 50), rsi(c), c[-1]
@@ -201,18 +207,24 @@ def entry_checks(c, spy, score, rank, slots):
         {"text": K("c.price_sma50", p=f"${p:.2f}", op=">" if p > s50 else "≤", s=f"${s50:.2f}"), "ok": p > s50},
         {"text": K("c.sma20_sma50", a=f"${s20:.2f}", op=">" if s20 > s50 else "≤", b=f"${s50:.2f}"), "ok": s20 > s50},
         {"text": K("c.mom20", v=f"{mom20:+.1%}"), "ok": mom20 > 0},
-        {"text": K("c.rsi", v=f"{r:.0f}"), "ok": r < 75},
+        {"text": K("c.rsi2", v=f"{r:.0f}", hi="✓" if near_high(c) else "✗"), "ok": r < 75 or near_high(c)},
         {"text": K("c.spy200", p=f"${spy[-1]:.2f}", op=">" if spy[-1] > spy200 else "≤", m=f"${spy200:.2f}"), "ok": spy[-1] > spy200},
         {"text": K("c.rank", rank=rank, score=f"{score:+.1%}", slots=slots), "ok": True},
     ]
 
-def exit_check(pos, c):
+def trail_pct(c):
+    return min(max(A_TRAIL_K * vol20(c), A_TRAIL_MIN), A_TRAIL_MAX)
+
+def exit_check(pos, c, close_ok=True):
+    """Hard stop works intraday; trailing stop and the 50-day break only count at the closing check."""
     p = c[-1]
     pos["peak"] = max(pos["peak"], p)
-    hard, trail, s50 = pos["avg_cost"] * (1 - A_HARD_STOP), pos["peak"] * (1 - A_TRAIL), sma(c, 50)
-    rules = [("r.hard_stop", p <= hard, K("c.hard", p=f"${p:.2f}", op="≤" if p <= hard else ">", lvl=f"${hard:.2f}", cost=f"${pos['avg_cost']:.2f}")),
-             ("r.trail_stop", p <= trail, K("c.trail", p=f"${p:.2f}", op="≤" if p <= trail else ">", lvl=f"${trail:.2f}", peak=f"${pos['peak']:.2f}")),
-             ("r.below_sma50", p < s50 * (1 - A_SMA_BUFFER), K("c.sma50_exit", p=f"${p:.2f}", op="<" if p < s50 * (1 - A_SMA_BUFFER) else "≥", s=f"${s50 * (1 - A_SMA_BUFFER):.2f}"))]
+    tp = pos.setdefault("trail_pct", round(trail_pct(c), 4))
+    hard, trail, s50 = pos["avg_cost"] * (1 - tp - A_HARD_EXTRA), pos["peak"] * (1 - tp), sma(c, 50)
+    brk = s50 * (1 - A_SMA_BUFFER)
+    rules = [("r.hard_stop", p <= hard, K("c.hard", p=f"${p:.2f}", op="≤" if p <= hard else ">", lvl=f"${hard:.2f}", cost=f"${pos['avg_cost']:.2f}", pct=f"{tp + A_HARD_EXTRA:.0%}")),
+             ("r.trail_stop", close_ok and p <= trail, K("c.trail", p=f"${p:.2f}", op="≤" if p <= trail else ">", lvl=f"${trail:.2f}", peak=f"${pos['peak']:.2f}", pct=f"{tp:.0%}")),
+             ("r.below_sma50", close_ok and p < brk, K("c.sma50_exit", p=f"${p:.2f}", op="<" if p < brk else "≥", s=f"${brk:.2f}"))]
     return next((K(n) for n, hit, _ in rules if hit), None), [{"text": txt, "ok": h} for _, h, txt in rules]
 
 
@@ -324,10 +336,10 @@ def decide_rule_long(acct, env):
     for sym, pos in list(acct["positions"].items()):
         if sym not in closes:
             continue
-        r, checks = exit_check(pos, closes[sym])
+        r, checks = exit_check(pos, closes[sym], et_hm(ts) >= A_DECIDE_AT)
         if r and sym not in pend and et_date(pos["entry"]) != today:
             queue(acct, "SELL", sym, ts, closes[sym][-1], r, {"checks": checks, "ind": snap(closes[sym])})
-    if BENCH not in closes or not market_regime_ok(closes):
+    if et_hm(ts) < A_DECIDE_AT or BENCH not in closes or not market_regime_ok(closes):
         return
     pend_buys = {o["symbol"] for o in acct["pending"] if o["side"] == "BUY"}
     cool = {(date.fromisoformat(today) - timedelta(days=d)).isoformat() for d in range(A_COOLDOWN_DAYS + 1)}
@@ -674,7 +686,7 @@ def market_snapshot(closes, ctx, ts):
         out[s] = {"t": ts, "price": round(c[-1], 2), "prev": round(c[-2], 2), "day": round(c[-1] / c[-2] - 1, 4),
                   "open": round(o, 2) if o else None, "hi": round(hi, 2) if hi else None, "lo": round(lo, 2) if lo else None, "sma20": round(i["sma20"], 2), "sma50": round(i["sma50"], 2),
                   "sma200": round(sma(c, 200), 2) if len(c) >= 200 else None, "rsi": round(i["rsi"], 1),
-                  "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "spark": [round(x, 2) for x in c[-40:]]}
+                  "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "off_high": round(c[-1] / max(c[-60:]) - 1, 4), "spark": [round(x, 2) for x in c[-40:]]}
     return out
 
 def step(state, closes, ctx, ts, news_fn=None, ai=None):
