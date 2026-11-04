@@ -20,7 +20,7 @@ VERDICTS = ("good_call", "bad_call", "lucky", "unlucky", "neutral")
 MAX_CALLS = 5                      # learning calls per day, on top of the trading calls
 REASON_EN = {"r.hard_stop": "hard stop -7%", "r.trail_stop": "trailing stop -8%", "r.below_sma50": "fell below the 50-day average",
              "r.uptrend": "uptrend entry (60-day momentum)", "r.tp": "take profit +1%", "r.sl": "stop loss -0.8%", "r.flatten": "flatten before the close", "r.eod_cut": "end-of-day cut: not in profit",
-             "r.dip": "intraday dip buy", "r.bh": "buy and hold", "r.rnd_buy": "random buy", "r.rnd_sell": "random sell",
+             "r.dip": "intraday dip buy", "r.brk": "intraday momentum-continuation buy", "r.bh": "buy and hold", "r.rnd_buy": "random buy", "r.rnd_sell": "random sell",
              "r.ai_buy": "AI buy", "r.ai_sell": "AI sell", "r.code_stop": "code stop-loss", "r.code_flatten": "code flatten before the close"}
 
 SYS_DIGEST = """You are a friendly market educator writing a daily learning note for a beginner who follows a PAPER-trading simulation (4 virtual traders: 2 rule-based, 2 AI; plus 3 control accounts). Use ONLY the data in the user message; never invent facts, prices or news. This is education, not investment advice. Write every free-text field in THREE languages (en, fr, zh = Simplified Chinese), plain-spoken, explaining jargon briefly.

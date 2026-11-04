@@ -49,10 +49,12 @@ STALE_SECS, ANOMALY = 1800, 0.25
 NY = ZoneInfo("America/New_York")
 
 # rule_long (A)
-A_MAX_POS, A_WEIGHT, A_HARD_STOP, A_TRAIL = 4, 0.25, 0.07, 0.08
+A_MAX_POS, A_WEIGHT, A_HARD_STOP, A_TRAIL = 6, 0.25, 0.07, 0.08
+A_MAX_EXPOSURE = 0.95                                  # A: never invest more than this share of equity (the rest is the cash buffer)
 A_VOL_TARGET, A_W_MIN, A_W_MAX = 0.004, 0.10, 0.30   # A: volatility-targeted sizing: weight = target / daily vol, clamped (calmer stocks get more)
 # rule_short (B)
-B_MAX_POS, B_WEIGHT, B_DIP, B_TP, B_SL = 4, 0.20, 0.012, 0.010, 0.008
+B_MAX_POS, B_WEIGHT, B_DIP, B_TP, B_SL = 6, 0.20, 0.012, 0.010, 0.008
+B_BRK_MIN, B_BRK_MAX, B_BRK_RANGE = 0.010, 0.060, 0.75   # B breakout entry: up 1%-6% from the open and in the top quarter of today's range
 B_VOL_TARGET, B_W_MIN, B_W_MAX = 0.003, 0.08, 0.25   # B: same idea, smaller
 INTRADAY_WINDOW = ((10, 0), (15, 30))    # B: new entries only inside this window
 EOD_AT = (15, 30)                        # B: end-of-day check (orders queued now still fill at the 15:45 run)
@@ -77,13 +79,13 @@ ACCOUNTS = {
     "rule_long": dict(name="A 趋势规则", kind="rule_long", style="规则 · 中线趋势", freq="每 15 分钟检查，持有数天到数周",
         desc="完全按预设条件买卖，没有 AI。顺势而为：股价站上 50 日均线、短期强于中期、动量为正时买入。",
         rules=["买入：现价>50日均线，20日均线>50日均线，20日动量>0，RSI<75，且 SPY 在 200 日均线之上",
-               "最多同时持有 4 只，按 60 日动量排序选股；仓位按波动率调整（波动越大买得越少，每只 10%–30%），不是平均分配",
+               "最多同时持有 6 只，按 60 日动量排序选股；仓位按波动率调整（波动越大买得越少，每只 10%–30%），总仓位最多 95%",
                "卖出：亏损 7% 止损 / 从最高点回撤 8% / 跌破 50 日均线",
                "同一天买入的股票当天不卖，卖出后当天不再买回"]),
     "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线", freq="每 15 分钟检查，可一天多次交易，有盈利的可留仓过夜",
-        desc="完全按预设条件做短线：趋势向上的股票盘中回调时低吸，涨一点就卖；收盘前把没盈利的卖掉，有盈利的留过夜。没有 AI。",
-        rules=["买入：10:00–15:30 之间，上升趋势股票（现价>50日均线且20日均线>50日均线）较今日开盘价回落 ≥1.2%，且 SPY 当日跌幅没有超过 1.5%",
-               "最多同时持有 4 只，仓位按波动率调整（每只 8%–25%），每只股票每天最多交易一次",
+        desc="完全按预设条件做短线：趋势向上的股票盘中回调时低吸、走强时顺势跟进，涨一点就卖；收盘前把没盈利的卖掉，有盈利的留过夜。没有 AI。",
+        rules=["买入：10:00–15:30 之间，上升趋势股票（现价>50日均线且20日均线>50日均线），满足其一：①较今日开盘价回落 ≥1.2%（低吸）；②较开盘上涨 1%–6% 且处在当日区间上沿（顺势追强）；且 SPY 当日跌幅没有超过 1.5%",
+               "最多同时持有 6 只，仓位按波动率调整（每只 8%–25%），每只股票每天最多交易一次",
                "卖出：盈利 +1.0% 止盈 / 亏损 -0.8% 止损 / 15:30 收盘前检查：没有盈利的卖出，有盈利的留仓过夜"]),
     "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:00），持有数天到数周",
         desc="每天开盘半小时后，AI 读取 21 只股票的行情指标和最新新闻标题，自己判断买什么、卖什么、仓位多少。",
@@ -336,7 +338,8 @@ def decide_rule_long(acct, env):
             break
         eq = equity_of(acct, prices)
         w, sigma = vol_weight(closes[sym], A_VOL_TARGET, A_W_MIN, A_W_MAX)
-        dollars = min(eq * w, acct["cash"] - committed(acct))
+        exposure = sum(x["shares"] * prices.get(s, x["avg_cost"]) for s, x in acct["positions"].items()) + committed(acct)
+        dollars = min(eq * w, acct["cash"] - committed(acct), eq * A_MAX_EXPOSURE - exposure)
         if dollars < 50:
             break
         queue(acct, "BUY", sym, ts, closes[sym][-1], K("r.uptrend", m=f"{score:+.1%}"),
@@ -370,11 +373,16 @@ def decide_rule_short(acct, env):
     cands = []
     for s in UNIVERSE:
         if s in closes and s in ctx and s not in skip and uptrend(closes[s]):
-            dip = closes[s][-1] / ctx[s]["open"] - 1
-            if dip <= -B_DIP:
-                cands.append((closes[s][-1] / closes[s][-61] - 1 if len(closes[s]) > 60 else 0, dip, s))
+            mv = closes[s][-1] / ctx[s]["open"] - 1
+            hi, lo = ctx[s].get("high"), ctx[s].get("low")
+            rng = (closes[s][-1] - lo) / (hi - lo) if hi and lo and hi > lo else None
+            mom60 = closes[s][-1] / closes[s][-61] - 1 if len(closes[s]) > 60 else 0
+            if mv <= -B_DIP:                                                     # entry 1: pullback in an uptrend
+                cands.append((mom60, mv, s, "dip", rng))
+            elif B_BRK_MIN <= mv <= B_BRK_MAX and rng is not None and rng >= B_BRK_RANGE:   # entry 2: momentum continuation
+                cands.append((mom60, mv, s, "brk", rng))
     n = len(acct["positions"]) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
-    for mom, dip, sym in sorted(cands, reverse=True):
+    for mom, dip, sym, kind, rng in sorted(cands, reverse=True):
         if n >= B_MAX_POS:
             break
         eq = equity_of(acct, prices)
@@ -383,12 +391,14 @@ def decide_rule_short(acct, env):
         dollars = min(eq * w, acct["cash"] - committed(acct))
         if dollars < 50:
             break
-        checks = [{"text": K("c.dip", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", thr=f"{B_DIP:.1%}"), "ok": True},
+        entry_chk = (K("c.dip", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", thr=f"{B_DIP:.1%}") if kind == "dip" else
+                     K("c.brk", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", lo=f"{B_BRK_MIN:.0%}", hi=f"{B_BRK_MAX:.0%}", r=f"{rng:.0%}"))
+        checks = [{"text": entry_chk, "ok": True},
                   {"text": K("c.uptrend", s50=f"${sma(c, 50):.2f}", s20=f"${sma(c, 20):.2f}"), "ok": True},
                   {"text": K("c.spy_day", chg=f"{spy_chg:+.2%}"), "ok": True},
                   {"text": K("c.window", hm=f"{hm[0]:02d}:{hm[1]:02d}"), "ok": True},
                   {"text": K("c.size", s=f"{sigma:.1%}", t=f"{B_VOL_TARGET:.1%}", w=f"{w:.0%}", lo=f"{B_W_MIN:.0%}", hi=f"{B_W_MAX:.0%}"), "ok": True}]
-        queue(acct, "BUY", sym, ts, c[-1], K("r.dip", d=f"{dip:+.1%}"),
+        queue(acct, "BUY", sym, ts, c[-1], K("r.dip", d=f"{dip:+.1%}") if kind == "dip" else K("r.brk", d=f"{dip:+.1%}"),
               {"checks": checks, "ind": snap(c), "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
         n += 1
 
