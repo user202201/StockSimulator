@@ -71,7 +71,7 @@ RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free 
 RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
-PROMPT_VER = {"long": 3, "short": 2, "aggr": 0}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
+PROMPT_VER = {"long": 3, "short": 3, "aggr": 0}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
 E_DEFAULT_CAP, E_RESERVE = 60, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
     "ai_long": {"horizon": "long", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.10, "min_hold": 2, "max_buys": NO_LIMIT,
@@ -101,7 +101,7 @@ ACCOUNTS = {
                "代码只保留基本风控：买入后至少持有 2 天，亏损 10% 强制止损；不限制持仓只数、选股和单只仓位（可以集中持有一只，也可以分散）",
                "资金使用（软性要求，不强制）：趋势向上时约 90% 投入、约 10% 现金（用于回调补仓和应急）；现金超过 20% 时 AI 必须说明理由（例如大盘趋势走坏）"]),
     "ai_short": dict(name="D AI 短线", kind="ai_short", style="AI + 新闻 · 短线", freq="每天 5 次（美东 10:00 / 11:30 / 13:00 / 14:30 / 15:30 收盘复盘），可隔夜持有",
-        desc="一天内多次复盘，AI 结合当天走势和新闻做短线交易；15:30 的收盘复盘由 AI 决定每个仓位留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。",
+        desc="一天内多次复盘的短线交易员：看当天的日内信号（较开盘涨跌、当日区间位置、最近一小时走势）加最新新闻做交易。预期画像：目标约 +1%–3%，亏损约 -1.5% 就走（代码硬止损 -3%），持有数小时到几天，仓位约 50%–90%；15:30 的收盘复盘由 AI 决定每个仓位留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
                "代码只保留基本风控：亏损 3% 强制止损，15:45 后不开新仓；不限制持仓只数、选股和单只仓位（可以集中持有一只，也可以分散），按操盘手惯例自行保留一定现金"]),
     "ai_aggr": dict(name="E AI 激进", kind="ai_aggr", style="AI + 新闻 · 高周转", freq="每 30 分钟复盘（美东 10:00–15:30，约 12 次，受免费 AI 额度限制），可隔夜持有",
