@@ -500,6 +500,8 @@ def decide_ai(acct, env, p):
             st["paused"] = f"{ts[:16]} daily AI budget reached"
             return
         st["paused"] = None
+    if hasattr(env["ai"], "time_left") and env["ai"].time_left() < 40:     # this run has used up its AI time budget: try again next run (no attempt used)
+        return
     news = env["news"](p["news_age"])
     pend = {o["symbol"] for o in acct["pending"]}
     eq = equity_of(acct, prices)

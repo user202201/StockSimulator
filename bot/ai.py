@@ -33,6 +33,7 @@ def providers():
 
 class Client:
     def __init__(self, pinned=None):
+        self.deadline = time.time() + float(os.environ.get("AI_RUN_BUDGET_S", "480"))   # wall-clock budget for all AI calls of one run
         self.http_calls = 0                  # HTTP requests made (for the daily quota bookkeeping)
         self.daily_quota_hit = False         # set when the provider reports its per-day quota is exhausted
         self.providers = providers()
@@ -43,6 +44,9 @@ class Client:
 
     def names(self):
         return [f"{p['name']}/{p['model']}" for p in self.providers]
+
+    def time_left(self):
+        return self.deadline - time.time()
 
     def decide(self, messages, payload=None):
         errs = []
@@ -141,9 +145,12 @@ class Client:
             body = json.dumps({"model": p["model"], "messages": messages, "temperature": 0, "max_tokens": 4096, **extras}).encode()
             req = urllib.request.Request(p["url"], data=body, headers={
                 "Content-Type": "application/json", "Authorization": "Bearer " + p["key"]})
+            left = self.time_left()
+            if left < 10:
+                raise ApiError(0, "run time budget exhausted")
             self.http_calls += 1
             try:
-                return self._open(req)["choices"][0]["message"]["content"]
+                return self._open(req, timeout=min(120, left))["choices"][0]["message"]["content"]
             except ApiError as e:
                 if e.code == 429 and "perday" in re.sub(r"[^a-z]", "", e.body.lower()):
                     self.daily_quota_hit = True
