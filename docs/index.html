@@ -76,6 +76,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
  .app{grid-template-columns:minmax(0,1fr)}aside{display:block;position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);min-width:0}#nav{overflow-x:auto;overflow-y:visible}.pop{bottom:auto;top:calc(100% + 6px)}
  #nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}.navl{display:none}.nav{flex:none;border:1px solid var(--line)}
  main{padding:12px}.two,.two.eq{grid-template-columns:1fr}}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:10px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:50;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}.toast.on{opacity:1;transform:none}
 </style>
 </head>
 <body>
@@ -90,6 +91,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 </aside>
 <main><div id="mkt" class="mkt"></div><div id="banner"></div><section id="page"></section></main>
 </div>
+<div id="toast" class="toast"></div>
 <dialog id="dlg"><div class="dh"><b id="dt"></b><button id="dx" aria-label="close">✕</button></div><div id="db"></div></dialog>
 <script>
 /* ============================ i18n ============================ */
@@ -196,6 +198,7 @@ const TPL=[
 TPL.forEach(r=>add(r[0],r[1],r[2],r[3]));
 /* UI strings */
 const U=[
+['rf.auto','自动刷新已开启（每分钟检查）','Auto-refresh is on (checks every minute)','Actualisation automatique activée (chaque minute)'],['rf.updated','🔄 数据已更新','🔄 Data updated','🔄 Données mises à jour'],['rf.reload','🔄 页面有新版本，正在刷新…','🔄 New version of the page, reloading…','🔄 Nouvelle version de la page, rechargement…'],
 ['mkt.spy','标普500 · SPY','S&P 500 · SPY','S&P 500 · SPY'],['mkt.qqq','纳指100 · QQQ','Nasdaq 100 · QQQ','Nasdaq 100 · QQQ'],['mkt.ai','AI 概念股平均（今日）','AI stocks average (today)','Moyenne actions IA (jour)'],
 ['mkt.time','行情时间','Quote time','Heure des cours'],['mkt.refresh','每 15 分钟更新一次','Refreshed every 15 min','Actualisé toutes les 15 min'],
 ['b.demo','⚠️ 当前为<b>离线演示数据</b>（随机生成的价格），机器人首次真实运行后会自动替换。','⚠️ Showing <b>offline demo data</b> (random prices); it is replaced automatically after the bot\'s first real run.','⚠️ <b>Données de démonstration</b> (prix aléatoires) ; remplacées automatiquement après le premier vrai passage du bot.'],
@@ -378,7 +381,7 @@ function banners(){let h='';const hl=S.health||{};
   $('banner').innerHTML=h}
 function header(){
   $('ttl').textContent=t('title');const ai=S.health?.ai||{};
-  $('upd').innerHTML=`${t('init')} ${usd(S.initial_cash)}<br>${t('updated')}: ${S.updated?fmtT(S.updated):'—'}<br>${t('ai')}: ${S.demo?t('ai.demo'):((ai.configured||[]).join(' → ')||t('ai.none'))}${ai.last_ok?`<br>${t('ai.ok')}: ${fmtT(ai.last_ok)}`:''}`;
+  $('upd').innerHTML=`${t('init')} ${usd(S.initial_cash)}<br>${t('updated')}: ${S.updated?fmtT(S.updated):'—'}<br>${t('ai')}: ${S.demo?t('ai.demo'):((ai.configured||[]).join(' → ')||t('ai.none'))}${ai.last_ok?`<br>${t('ai.ok')}: ${fmtT(ai.last_ok)}`:''}<br><span class="sm">🔄 ${t('rf.auto')}</span>`;
   document.documentElement.lang=LANG;document.title=t('title').replace('📈 ','')}
 
 /* ============================ shared tables ============================ */
@@ -704,6 +707,31 @@ function fullRender(){header();settingsUI();marketStrip();banners();render()}
 $('dx').onclick=()=>$('dlg').close();$('dlg').onclick=e=>{if(e.target===$('dlg'))$('dlg').close()};
 window.onhashchange=route;
 applyTheme();mkTF();$('ttl').textContent=t('title');$('upd').textContent=t('loading');settingsUI();
-fetch('data/state.json?'+Date.now()).then(r=>r.json()).then(s=>{S=s;fullRender();route()}).catch(e=>{$('upd').textContent=t('load.fail')+e});
+/* ---- live refresh: poll for new data (and for a new version of this page) ---- */
+const POLL_MS=(+new URLSearchParams(location.search).get('poll')||60)*1000;
+let LAST_TXT='',PAGE_TAG=null,POLLING=false,TOAST_T=null;
+async function pageTag(){try{const r=await fetch(location.pathname+'?v='+Date.now(),{method:'HEAD',cache:'no-store'});return r.headers.get('etag')||r.headers.get('last-modified')}catch(e){return null}}
+function toast(msg){const el=$('toast');el.textContent=msg;el.classList.add('on');clearTimeout(TOAST_T);TOAST_T=setTimeout(()=>el.classList.remove('on'),2800)}
+function canRerender(){const a=document.activeElement;
+  const editing=ROUTE==='learn'&&SUB.length&&!['journal','news','calibration'].includes(SUB[0]);          // glossary search / prediction picks: do not wipe what the user is typing
+  return !$('dlg').open&&!editing&&!(a&&['INPUT','TEXTAREA'].includes(a.tagName))}
+async function poll(){
+  if(POLLING||document.hidden||!S)return;POLLING=true;
+  try{
+    const r=await fetch('data/state.json?'+Date.now(),{cache:'no-store'});
+    if(r.ok){const txt=await r.text();
+      if(txt!==LAST_TXT){LAST_TXT=txt;S=JSON.parse(txt);header();marketStrip();banners();
+        if(canRerender()){const y=window.scrollY;render();window.scrollTo(0,y)}else nav(ROUTE);
+        toast(t('rf.updated'))}}
+    const tag=await pageTag();
+    if(PAGE_TAG&&tag&&tag!==PAGE_TAG){toast(t('rf.reload'));setTimeout(()=>location.reload(),900)}
+  }catch(e){}
+  POLLING=false}
+setInterval(poll,POLL_MS);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
+pageTag().then(x=>{PAGE_TAG=x});
+window.__loadedAt=Date.now();
+fetch('data/state.json?'+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(txt=>{LAST_TXT=txt;S=JSON.parse(txt);fullRender();route()}).catch(e=>{$('upd').textContent=t('load.fail')+e});
 </script>
 </body></html>
+
