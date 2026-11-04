@@ -69,3 +69,7 @@
 Finding: AAPL bought 11-02, sold 11-03 on a bare 50-day-average break (-$32), re-bought 11-04 7.6% higher: whipsaw, not "days to weeks".
 Change: the 50-day exit needs a 2% buffer; no re-buy for 3 days after a sale. Next in the review: B, then C (target: heavy invested share, small reserve), D, E.
 A, follow-up (same day): trend follower made consistent with its label — entries and exits (except the hard stop) are decided only at the 15:45 ET check (closing-price confirmation, filled at the next open); trailing stop = 4 x daily volatility (7%-15%), hard stop = trail + 2% below cost; RSI<75 limit waived near the 60-day high (breakouts); description now states the expected profile (win rate ~40%, few big winners, weeks of holding).
+
+### 2026-11-04 — Per-trader review, step 2: B (short-term rules)
+Owner's direction: B is A at a faster pace (small, steady wins, quick turnover), may stand aside but not for long, no daily flatten.
+Change: B trades only trend stocks with the market regime filter (SPY above its 200-day average); take-profit 0.8x and stop 1.0x daily volatility (1%-3% / 1%-3.5%); dip/breakout thresholds scale with volatility; exposure cap 95%; exits also on a 2% break of the 50-day average (confirmed near the close) and after 7 calendar days (rotation). The end-of-day cut (sell everything not in profit) is removed.

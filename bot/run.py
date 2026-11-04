@@ -57,12 +57,14 @@ A_HIGH_NEAR = 0.02       # within 2% of the 60-day high counts as a breakout (RS
 A_MAX_EXPOSURE = 0.95                                  # A: never invest more than this share of equity (the rest is the cash buffer)
 A_VOL_TARGET, A_W_MIN, A_W_MAX = 0.004, 0.10, 0.30   # A: volatility-targeted sizing: weight = target / daily vol, clamped (calmer stocks get more)
 # rule_short (B)
-B_MAX_POS, B_WEIGHT, B_DIP, B_TP, B_SL = 6, 0.20, 0.012, 0.010, 0.008
-B_BRK_MIN, B_BRK_MAX, B_BRK_RANGE = 0.010, 0.060, 0.75   # B breakout entry: up 1%-6% from the open and in the top quarter of today's range
+B_MAX_POS, B_WEIGHT = 6, 0.20
+B_TP_K, B_TP_MIN, B_TP_MAX = 0.8, 0.010, 0.030       # B take-profit = 0.8 x daily volatility (1%-3%): small wins
+B_SL_K, B_SL_MIN, B_SL_MAX = 1.0, 0.010, 0.035       # B stop-loss = 1.0 x daily volatility (1%-3.5%)
+B_DIP_K, B_DIP_MIN, B_DIP_MAX = 0.6, 0.008, 0.020    # B entry threshold (pullback from open / breakout minimum) = 0.6 x daily volatility
+B_MAX_HOLD_DAYS = 7                                  # B: calendar days (~5 trading days); then rotate at the close
+B_BRK_MAX, B_BRK_RANGE = 0.060, 0.75   # B breakout entry: up 1%-6% from the open and in the top quarter of today's range
 B_VOL_TARGET, B_W_MIN, B_W_MAX = 0.003, 0.08, 0.25   # B: same idea, smaller
 INTRADAY_WINDOW = ((10, 0), (15, 30))    # B: new entries only inside this window
-EOD_AT = (15, 30)                        # B: end-of-day check (orders queued now still fill at the 15:45 run)
-B_CARRY_MIN = 0.0                        # B: at the EOD check, positions in profit are carried overnight; the rest are sold
 # random control
 RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free slot, per day (v2: keeps exposure and trade rate close to the real traders)
 RANDOM_VER = 2
@@ -87,11 +89,11 @@ ACCOUNTS = {
                "最多同时持有 6 只，按 60 日动量排序选股；仓位按波动率调整（波动越大买得越少，每只 10%–30%），总仓位最多 95%",
                "卖出：从最高点回撤（按个股波动调整，约 7%–15%）/ 跌破 50 日均线 2% / 亏损超过回撤线再加 2% 的硬止损；除硬止损外，都只在 15:45 收盘前确认后才执行（不被盘中噪音洗出去）",
                "同一天买入的股票当天不卖；卖出后 3 天内不再买回"]),
-    "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线", freq="每 15 分钟检查，可一天多次交易，有盈利的可留仓过夜",
-        desc="完全按预设条件做短线：趋势向上的股票盘中回调时低吸、走强时顺势跟进，涨一点就卖；收盘前把没盈利的卖掉，有盈利的留过夜。没有 AI。",
-        rules=["买入：10:00–15:30 之间，上升趋势股票（现价>50日均线且20日均线>50日均线），满足其一：①较今日开盘价回落 ≥1.2%（低吸）；②较开盘上涨 1%–6% 且处在当日区间上沿（顺势追强）；且 SPY 当日跌幅没有超过 1.5%",
-               "最多同时持有 6 只，仓位按波动率调整（每只 8%–25%），每只股票每天最多交易一次",
-               "卖出：盈利 +1.0% 止盈 / 亏损 -0.8% 止损 / 15:30 收盘前检查：没有盈利的卖出，有盈利的留仓过夜"]),
+    "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线（A 的快节奏版）", freq="每 15 分钟检查，一天可多次交易，持仓数天，不强制清仓",
+        desc="完全按预设条件做短线，思路和 A 一致（只做上升趋势股票），但节奏更快：入场更灵敏、目标更小、周转更快，靠一次次小赢累积，求稳。没有合适机会时可以观望，但不会长期空仓；不会每天清仓，持仓可以过夜。没有 AI。",
+        rules=["买入：10:00–15:30 之间，SPY 在 200 日线之上且当日跌幅不超过 1.5%，上升趋势股票（现价>50日均线且20日均线>50日均线）满足其一：①较开盘回落到按波动率定的幅度（约 0.8%–2%，低吸）；②较开盘上涨超过该幅度（不超过 6%）且处在当日区间上沿（顺势追强）",
+               "最多同时持有 6 只，仓位按波动率调整（每只 8%–25%），总仓位最多 95%，每只股票每天最多买一次",
+               "卖出：止盈 0.8 倍日波动（1%–3%，小赢就走）/ 止损 1.0 倍日波动（1%–3.5%）/ 收盘前确认跌破 50 日线 2% / 持有满 7 天（约 5 个交易日）后在收盘前换仓；不再每天清仓，盈亏都可以过夜"]),
     "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:00），持有数天到数周",
         desc="每天开盘半小时后，AI 读取 21 只股票的行情指标和最新新闻标题，自己判断买什么、卖什么、仓位多少。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
@@ -363,23 +365,40 @@ def decide_rule_long(acct, env):
                "equity": round(eq, 2), "weight": round(dollars / eq, 3)}, dollars=dollars)
         n += 1
 
+def b_levels(c):
+    """B: per-stock levels from daily volatility. Returns (take-profit, stop-loss, dip threshold, breakout minimum)."""
+    v = vol20(c)
+    return (min(max(B_TP_K * v, B_TP_MIN), B_TP_MAX), min(max(B_SL_K * v, B_SL_MIN), B_SL_MAX),
+            min(max(B_DIP_K * v, B_DIP_MIN), B_DIP_MAX), min(max(B_DIP_K * v, B_DIP_MIN), B_DIP_MAX))
+
 def decide_rule_short(acct, env):
+    """B = A's idea at a faster pace: trend stocks only, small volatility-scaled targets, positions may be held for days (no daily flatten)."""
     closes, ctx, ts, prices = env["closes"], env["ctx"], env["ts"], env["prices"]
     today, hm = et_date(ts), et_hm(ts)
     pend = {o["symbol"] for o in acct["pending"]}
     for sym, pos in list(acct["positions"].items()):
         if sym not in closes or sym in pend:
             continue
-        p = closes[sym][-1]
+        c = closes[sym]
+        p = c[-1]
         pos["peak"] = max(pos["peak"], p)
+        tp, sl, _, _ = b_levels(c)
+        pos.setdefault("tp", round(tp, 4)); pos.setdefault("sl", round(sl, 4))
+        tp, sl = pos["tp"], pos["sl"]
         gain = p / pos["avg_cost"] - 1
-        reason = (K("r.tp") if gain >= B_TP else K("r.sl") if gain <= -B_SL else
-                  K("r.eod_cut") if hm >= EOD_AT and gain < B_CARRY_MIN else None)
+        age = (date.fromisoformat(today) - date.fromisoformat(et_date(pos["entry"]))).days if pos.get("entry") else 0
+        s50 = sma(c, 50)
+        closing = hm >= A_DECIDE_AT
+        brk = s50 * (1 - A_SMA_BUFFER) if s50 else None
+        reason = (K("r.tp") if gain >= tp else K("r.sl") if gain <= -sl else
+                  K("r.below_sma50") if closing and brk and p < brk else
+                  K("r.timeout", d=B_MAX_HOLD_DAYS) if closing and age >= B_MAX_HOLD_DAYS else None)
         if reason:
-            checks = [{"text": K("c.gain", cost=f"${pos['avg_cost']:.2f}", g=f"{gain:+.2%}", tp=f"{B_TP:.1%}", sl=f"{B_SL:.1%}"), "ok": abs(gain) >= min(B_TP, B_SL)},
-                      {"text": K("c.eod", hm=f"{hm[0]:02d}:{hm[1]:02d}", eod=f"{EOD_AT[0]}:{EOD_AT[1]}", g=f"{gain:+.2%}", thr=f"{B_CARRY_MIN:.1%}"), "ok": hm >= EOD_AT and gain < B_CARRY_MIN}]
-            queue(acct, "SELL", sym, ts, p, reason, {"checks": checks, "ind": snap(closes[sym])})
-    if not (INTRADAY_WINDOW[0] <= hm < INTRADAY_WINDOW[1]) or BENCH not in closes or BENCH not in ctx:
+            checks = [{"text": K("c.gain", cost=f"${pos['avg_cost']:.2f}", g=f"{gain:+.2%}", tp=f"{tp:.1%}", sl=f"{sl:.1%}"), "ok": gain >= tp or gain <= -sl},
+                      {"text": K("c.age", d=age, n=B_MAX_HOLD_DAYS), "ok": closing and age >= B_MAX_HOLD_DAYS},
+                      {"text": K("c.sma50_exit", p=f"${p:.2f}", op="<" if brk and p < brk else "≥", s=f"${brk:.2f}" if brk else "—"), "ok": bool(closing and brk and p < brk)}]
+            queue(acct, "SELL", sym, ts, p, reason, {"checks": checks, "ind": snap(c)})
+    if not (INTRADAY_WINDOW[0] <= hm < INTRADAY_WINDOW[1]) or BENCH not in closes or BENCH not in ctx or not market_regime_ok(closes):
         return
     spy_chg = closes[BENCH][-1] / ctx[BENCH]["open"] - 1
     if spy_chg <= -0.015:
@@ -392,22 +411,24 @@ def decide_rule_short(acct, env):
             hi, lo = ctx[s].get("high"), ctx[s].get("low")
             rng = (closes[s][-1] - lo) / (hi - lo) if hi and lo and hi > lo else None
             mom60 = closes[s][-1] / closes[s][-61] - 1 if len(closes[s]) > 60 else 0
-            if mv <= -B_DIP:                                                     # entry 1: pullback in an uptrend
-                cands.append((mom60, mv, s, "dip", rng))
-            elif B_BRK_MIN <= mv <= B_BRK_MAX and rng is not None and rng >= B_BRK_RANGE:   # entry 2: momentum continuation
-                cands.append((mom60, mv, s, "brk", rng))
+            _, _, dip_thr, brk_min = b_levels(closes[s])
+            if mv <= -dip_thr:                                                   # entry 1: pullback in an uptrend
+                cands.append((mom60, mv, s, "dip", rng, dip_thr))
+            elif brk_min <= mv <= B_BRK_MAX and rng is not None and rng >= B_BRK_RANGE:   # entry 2: momentum continuation
+                cands.append((mom60, mv, s, "brk", rng, brk_min))
     n = len(acct["positions"]) + sum(1 for o in acct["pending"] if o["side"] == "BUY")
-    for mom, dip, sym, kind, rng in sorted(cands, reverse=True):
+    for mom, dip, sym, kind, rng, thr in sorted(cands, reverse=True):
         if n >= B_MAX_POS:
             break
         eq = equity_of(acct, prices)
         c = closes[sym]
         w, sigma = vol_weight(c, B_VOL_TARGET, B_W_MIN, B_W_MAX)
-        dollars = min(eq * w, acct["cash"] - committed(acct))
+        exposure = sum(x["shares"] * prices.get(q, x["avg_cost"]) for q, x in acct["positions"].items()) + committed(acct)
+        dollars = min(eq * w, acct["cash"] - committed(acct), eq * A_MAX_EXPOSURE - exposure)
         if dollars < 50:
             break
-        entry_chk = (K("c.dip", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", thr=f"{B_DIP:.1%}") if kind == "dip" else
-                     K("c.brk", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", lo=f"{B_BRK_MIN:.0%}", hi=f"{B_BRK_MAX:.0%}", r=f"{rng:.0%}"))
+        entry_chk = (K("c.dip", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", thr=f"{thr:.1%}") if kind == "dip" else
+                     K("c.brk", open=f"${ctx[sym]['open']:.2f}", d=f"{dip:+.2%}", lo=f"{thr:.1%}", hi=f"{B_BRK_MAX:.0%}", r=f"{rng:.0%}"))
         checks = [{"text": entry_chk, "ok": True},
                   {"text": K("c.uptrend", s50=f"${sma(c, 50):.2f}", s20=f"${sma(c, 20):.2f}"), "ok": True},
                   {"text": K("c.spy_day", chg=f"{spy_chg:+.2%}"), "ok": True},
@@ -686,7 +707,7 @@ def market_snapshot(closes, ctx, ts):
         out[s] = {"t": ts, "price": round(c[-1], 2), "prev": round(c[-2], 2), "day": round(c[-1] / c[-2] - 1, 4),
                   "open": round(o, 2) if o else None, "hi": round(hi, 2) if hi else None, "lo": round(lo, 2) if lo else None, "sma20": round(i["sma20"], 2), "sma50": round(i["sma50"], 2),
                   "sma200": round(sma(c, 200), 2) if len(c) >= 200 else None, "rsi": round(i["rsi"], 1),
-                  "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "off_high": round(c[-1] / max(c[-60:]) - 1, 4), "spark": [round(x, 2) for x in c[-40:]]}
+                  "vol": round(vol20(c), 4), "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "off_high": round(c[-1] / max(c[-60:]) - 1, 4), "spark": [round(x, 2) for x in c[-40:]]}
     return out
 
 def step(state, closes, ctx, ts, news_fn=None, ai=None):
