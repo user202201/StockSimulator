@@ -79,3 +79,7 @@ B, follow-up: decisions must be independent from A. B ranked candidates by A's 6
 Finding: C bought on catalysts/bounces (ORCL, AMD) and chased the post-election spike, had no market-regime input, a 70-90% invested target and no stated purpose for the reserve.
 Change (prompt v3, one re-review): MARKET REGIME block (SPY vs 50/200-day, share of stocks in an uptrend) added to every AI prompt; C must state its view of the overall trend first, buys mainly on trend (catalysts only support), target about 90% invested with a ~10% reserve used to add on pullbacks and for emergencies, >20% cash needs a stated reason. No code-level floor yet; revisit after a few days of data.
 Dashboard: data-check timestamp shown in the sidebar, poll every 30 s.
+
+### 2026-11-04 — Per-trader review, step 4: D (AI short-term trader)
+Finding: D's buys on the post-election spike (AAPL/MSFT) were justified by "mega-cap leader", the same story as C and E; its closing (15:30) review had not run yet in live conditions; the description lacked an expected profile.
+Change (prompt v3, one re-review): every D buy must cite an intraday signal (move vs open, position in today's range, last-60-minute change); daily trend alone is C's domain. Description states the profile (+1-3% targets, about -1.5% cut, hours to days, 50-90% invested). To verify: today's 15:30 review gives a carry/sell decision for each position.
