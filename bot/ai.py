@@ -68,7 +68,7 @@ class Client:
         if it is only overloaded (503/429/timeout) the next best Flash model answers this call and the pin is unchanged."""
         preferred = p["model"]
         auto = p["name"] == "gemini" and not p.get("explicit")
-        order, i, tried, gone = [preferred], 0, [], False
+        order, i, tried, gone, retried = [preferred], 0, [], False, set()
         while True:
             model = order[i]
             p["model"] = model
@@ -81,6 +81,10 @@ class Client:
                 return txt, model, tried
             except ApiError as e:
                 tried.append(f"{model}: {e}"[:140])
+                if auto and e.code in (500, 502, 503, 504) and model not in retried and self.time_left() > 45:
+                    retried.add(model)                      # "high demand, try again later": give the same model one more chance first
+                    time.sleep(8)
+                    continue
                 if not auto or not (e.code in (400, 404) or e.code in self.OVERLOAD):
                     p["model"] = preferred
                     raise
