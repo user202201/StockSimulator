@@ -6,7 +6,22 @@ Providers are tried in this order, whichever are configured via environment vari
   3. github   GITHUB_TOKEN  (+ GH_MODEL)                 GitHub Models (needs `models: read` permission)
 The provider + model actually used is returned with every answer and stored with every decision.
 """
+from datetime import datetime
 import json, os, random, re, time, urllib.error, urllib.request
+
+
+def pt_today():
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()   # Gemini daily quotas reset at midnight Pacific
+
+
+def quota_info(body):
+    """What kind of 429 is this? per-day (that model is finished until tomorrow) or per-minute (wait a little)."""
+    b = body or ""
+    qid = re.search(r'quotaId\W+([A-Za-z0-9_\-]+)', b)
+    rd = re.search(r'retryDelay\W+(\d+(?:\.\d+)?)s', b)
+    qid = qid.group(1) if qid else ""
+    return {"id": qid, "per_day": "perday" in re.sub(r"[^a-z]", "", (qid + " " + b).lower()), "retry": float(rd.group(1)) if rd else None}
 
 
 class ApiError(Exception):
@@ -34,11 +49,16 @@ def providers():
 
 
 class Client:
-    def __init__(self, pinned=None):
+    def __init__(self, pinned=None, dead=None):
         self.deadline = time.time() + float(os.environ.get("AI_RUN_BUDGET_S", "480"))   # wall-clock budget for all AI calls of one run
         self.min_gap = float(os.environ.get("AI_MIN_GAP_S", "15"))   # seconds between two requests: bursts trigger per-minute 429s on the free tier
         self.last_call = 0.0
         self.http_calls = 0                  # answered requests (for the daily quota bookkeeping)
+        self.dead = dead if dead is not None else {}      # model -> Pacific date on which its daily quota ran out
+        for m in [m for m, d in self.dead.items() if d != pt_today()]:
+            del self.dead[m]
+        self.last_429 = None
+        self.exhausted_all = False
         self.daily_quota_hit = False         # set when the provider reports its per-day quota is exhausted
         self.providers = providers()
         self.pinned = pinned if pinned is not None else {}      # provider -> model chosen by auto-discovery (persisted in state)
@@ -74,6 +94,14 @@ class Client:
         preferred = p["model"]
         auto = p["name"] == "gemini" and not p.get("explicit")
         order, i, tried, gone, retried, first_body = [preferred], 0, [], False, set(), ""
+        if auto and preferred in self.dead:                        # the preferred model has no quota left today: start from a live one
+            try:
+                order = [m for m in self._candidates(p, include_lite=True) if m not in self.dead]
+            except Exception:
+                order = []
+            if not order:
+                self.exhausted_all = True
+                raise RuntimeError("every Gemini model has used up its daily quota (resets at midnight Pacific time)")
         while True:
             model = order[i]
             p["model"] = model
@@ -101,7 +129,7 @@ class Client:
                     raise
                 if len(order) == 1:                            # first failure: look up the ladder once
                     try:
-                        order += [m for m in self._candidates(p, include_lite=True) if m != preferred][:5]
+                        order += [m for m in self._candidates(p, include_lite=True) if m != preferred and m not in self.dead][:5]
                     except Exception:
                         pass
                 gone = gone or e.code in (400, 404)
@@ -119,7 +147,7 @@ class Client:
                 alts = [m for m in self._candidates(p, include_lite=True) if m != primary_model]
             except Exception:
                 continue
-            for m in alts[:2]:
+            for m in [m for m in alts if m not in self.dead][:2]:
                 q = dict(p); q["model"] = m
                 try:
                     return self._call(q, messages), m
@@ -146,7 +174,7 @@ class Client:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 raw = r.read()
         except urllib.error.HTTPError as e:
-            raise ApiError(e.code, e.read().decode("utf-8", "replace")[:160].replace("\n", " "))
+            raise ApiError(e.code, e.read().decode("utf-8", "replace")[:1200].replace("\n", " "))
         except (TimeoutError, urllib.error.URLError, OSError) as e:
             raise ApiError(0, f"timeout/network after {timeout}s: {str(e)[:80]}")
         try:
@@ -172,12 +200,17 @@ class Client:
                 self.http_calls += 1               # only answered requests count: failed (503/429) calls do not use up the free quota
                 return out
             except ApiError as e:
-                if e.code == 429 and "perday" in re.sub(r"[^a-z]", "", e.body.lower()):
-                    self.daily_quota_hit = True
+                if e.code == 429:
+                    q = quota_info(e.body)
+                    self.last_429 = {"model": p["model"], "quota": q["id"][:90], "per_day": q["per_day"], "retry": q["retry"],
+                                     "t": time.strftime("%Y-%m-%dT%H:%MZ", time.gmtime())}
+                    if q["per_day"]:
+                        self.dead[p["model"]] = pt_today()     # this model is finished for today: do not ask it again
+                        raise
                 if e.code == 400 and extras and "reasoning" in e.body.lower():
                     extras = {}; continue                      # this model rejects reasoning_effort
-                if e.code == 429 and attempt < 1 and not self.daily_quota_hit:
-                    time.sleep(35); continue            # per-minute limit: wait it out once, then let the ladder try another model
+                if e.code == 429 and attempt < 1:
+                    time.sleep(min(q["retry"] or 35, 50)); continue     # per-minute limit: wait as long as the API asks (once), then let the ladder try another model
                 raise
 
 

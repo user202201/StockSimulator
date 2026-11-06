@@ -198,7 +198,7 @@ const TPL=[
 TPL.forEach(r=>add(r[0],r[1],r[2],r[3]));
 /* UI strings */
 const U=[
-['rf.auto','数据约每 15 分钟更新一次；页面每 30 秒自动检查有没有新数据，有就立即刷新','Data updates about every 15 min; the page checks every 30 s for new data and refreshes by itself','Données mises à jour toutes les ~15 min ; la page vérifie toutes les 30 s et se rafraîchit seule'],['ai.calls','AI 调用（{d}，成功返回）：{n} 次','AI calls ({d}, answered): {n}','Appels IA ({d}, réussis) : {n}'],['ai.limit','已探测到的日上限 {n}','observed daily limit {n}','limite quotidienne observée {n}'],['rf.checked','上次检查数据','Last data check','Dernière vérification'],['rf.updated','🔄 数据已更新','🔄 Data updated','🔄 Données mises à jour'],['rf.reload','🔄 页面有新版本，正在刷新…','🔄 New version of the page, reloading…','🔄 Nouvelle version de la page, rechargement…'],
+['rf.auto','数据约每 15 分钟更新一次；页面每 30 秒自动检查有没有新数据，有就立即刷新','Data updates about every 15 min; the page checks every 30 s for new data and refreshes by itself','Données mises à jour toutes les ~15 min ; la page vérifie toutes les 30 s et se rafraîchit seule'],['ai.dead','今日额度已用尽的模型：{m}','Models out of daily quota: {m}','Modèles sans quota aujourd\'hui : {m}'],['ai.l429','最近一次 429：{k}（{m}，{t} UTC）','Latest 429: {k} ({m}, {t} UTC)','Dernier 429 : {k} ({m}, {t} UTC)'],['ai.perday','每天额度','daily quota','quota quotidien'],['ai.permin','每分钟限速','per-minute limit','limite par minute'],['ai.calls','AI 调用（{d}，成功返回）：{n} 次','AI calls ({d}, answered): {n}','Appels IA ({d}, réussis) : {n}'],['ai.limit','已探测到的日上限 {n}','observed daily limit {n}','limite quotidienne observée {n}'],['rf.checked','上次检查数据','Last data check','Dernière vérification'],['rf.updated','🔄 数据已更新','🔄 Data updated','🔄 Données mises à jour'],['rf.reload','🔄 页面有新版本，正在刷新…','🔄 New version of the page, reloading…','🔄 Nouvelle version de la page, rechargement…'],
 ['mkt.spy','标普500 · SPY','S&P 500 · SPY','S&P 500 · SPY'],['mkt.qqq','纳指100 · QQQ','Nasdaq 100 · QQQ','Nasdaq 100 · QQQ'],['mkt.ai','AI 概念股平均（今日）','AI stocks average (today)','Moyenne actions IA (jour)'],
 ['mkt.time','行情时间','Quote time','Heure des cours'],['mkt.refresh','每 15 分钟更新一次，页面自动同步','Refreshed every 15 min, the page syncs by itself','Actualisé toutes les 15 min, la page se synchronise seule'],
 ['b.demo','⚠️ 当前为<b>离线演示数据</b>（随机生成的价格），机器人首次真实运行后会自动替换。','⚠️ Showing <b>offline demo data</b> (random prices); it is replaced automatically after the bot\'s first real run.','⚠️ <b>Données de démonstration</b> (prix aléatoires) ; remplacées automatiquement après le premier vrai passage du bot.'],
@@ -381,12 +381,13 @@ function banners(){let h='';const hl=S.health||{};
     for(let x=new Date(d.getTime()+864e5);x<new Date(now.toDateString());x=new Date(x.getTime()+864e5))if(x.getDay()%6)miss++;
     if(miss>=1)h+=`<div class="banner warn">${t('b.stale',{n:miss})}</div>`}
   $('banner').innerHTML=h}
+function aiDead(){const h=S.health?.ai||{},d=h.dead||{},ms=Object.keys(d);let x='';if(ms.length)x+=`<br><span class="sm" style="color:var(--down,#c0392b)">${t('ai.dead',{m:ms.join(', ')})}</span>`;const q=h.last_429;if(q)x+=`<br><span class="sm mut">${t('ai.l429',{k:q.per_day?t('ai.perday'):t('ai.permin'),m:q.model,t:q.t.slice(5,16).replace('T',' ')})}</span>`;return x}
 function aiCalls(){const u=S.ai_usage||{},ks=Object.keys(u).filter(k=>k!=='limit_hint').sort();if(!ks.length)return '';const k=ks.at(-1);return `<br>${t('ai.calls',{n:u[k],d:k.slice(5)})}${u.limit_hint?' · '+t('ai.limit',{n:u.limit_hint}):''}`}
 let LAST_CHECK=null;
 function chkTxt(){return LAST_CHECK?t('rf.checked')+' '+LAST_CHECK.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}):''}
 function header(){
   $('ttl').textContent=t('title');const ai=S.health?.ai||{};
-  $('upd').innerHTML=`${t('init')} ${usd(S.initial_cash)}<br>${t('updated')}: ${S.updated?fmtT(S.updated):'—'}<br>${t('ai')}: ${S.demo?t('ai.demo'):((ai.configured||[]).join(' → ')||t('ai.none'))}${ai.last_ok?`<br>${t('ai.ok')}: ${fmtT(ai.last_ok)}`:''}${aiCalls()}<br><span class="sm">🔄 ${t('rf.auto')}</span><br><span class="sm mut" id="chk">${chkTxt()}</span>`;
+  $('upd').innerHTML=`${t('init')} ${usd(S.initial_cash)}<br>${t('updated')}: ${S.updated?fmtT(S.updated):'—'}<br>${t('ai')}: ${S.demo?t('ai.demo'):((ai.configured||[]).join(' → ')||t('ai.none'))}${ai.last_ok?`<br>${t('ai.ok')}: ${fmtT(ai.last_ok)}`:''}${aiCalls()}${aiDead()}<br><span class="sm">🔄 ${t('rf.auto')}</span><br><span class="sm mut" id="chk">${chkTxt()}</span>`;
   document.documentElement.lang=LANG;document.title=t('title').replace('📈 ','')}
 
 /* ============================ shared tables ============================ */

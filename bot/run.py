@@ -566,6 +566,8 @@ def decide_ai(acct, env, p):
             st["paused"] = f"{ts[:16]} daily AI budget reached"
             return
         st["paused"] = None
+    if getattr(env["ai"], "exhausted_all", False):                  # every model is out of quota today: do not burn attempts
+        return
     if hasattr(env["ai"], "time_left") and env["ai"].time_left() < 40:     # this run has used up its AI time budget: try again next run (no attempt used)
         return
     last = getattr(env["ai"], "last_call", 0)
@@ -843,8 +845,8 @@ def record_usage(state, client, ts):
     n = getattr(client, "http_calls", 0)
     if n:
         u[today] = u.get(today, 0) + n
-    if getattr(client, "daily_quota_hit", False):
-        u["limit_hint"] = u.get(today, 0)
+    if getattr(client, "last_429", None):
+        state.setdefault("health", {}).setdefault("ai", {})["last_429"] = client.last_429      # kind of the latest rate-limit answer (per-minute / per-day) for diagnosis
     for k in sorted(k for k in u if k != "limit_hint")[:-30]:
         del u[k]
 
@@ -877,7 +879,7 @@ def run_live():
             if et.weekday() < 5 and (16, 0) <= (et.hour, et.minute) < (20, 0) and state.get("updated") and et_date(state["updated"]) == et.date().isoformat():
                 if os.environ.get("RETRY_AI"):
                     state.get("learn", {}).get("errors", {}).clear()
-                client = aimod.Client(pinned=h.setdefault("ai", {}).setdefault("pinned", {}))
+                client = aimod.Client(pinned=h.setdefault("ai", {}).setdefault("pinned", {}), dead=h["ai"].setdefault("dead", {}))
                 learn.post_close(state, client if client.providers else None, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), NAMES, UNIVERSE)
                 record_usage(state, client, ts)
                 save_state(state)
@@ -905,7 +907,7 @@ def run_live():
                 ctx[s] = d["day"]
         if BENCH not in closes:
             raise RuntimeError("benchmark quote unusable: " + "; ".join(notes))
-        client = aimod.Client(pinned=h.setdefault("ai", {}).setdefault("pinned", {}))
+        client = aimod.Client(pinned=h.setdefault("ai", {}).setdefault("pinned", {}), dead=h["ai"].setdefault("dead", {}))
         h["ai"]["configured"] = client.names()
         if not client.providers:
             h["ai"]["last_error"] = "未配置任何 AI 服务（缺少 GEMINI_API_KEY，且 GitHub Models 不可用），C/D 账户暂不交易"

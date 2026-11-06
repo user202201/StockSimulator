@@ -6,6 +6,10 @@ on:
   schedule:
     # an extra revival path in case the chain ever breaks; GitHub's cron is unreliable, so this is only a bonus
     - cron: "17 */4 * * *"
+    # extra revival paths around the market open (09:30 ET is 13:30 or 14:30 UTC); a run that starts while another tick sleeps just waits its turn
+    - cron: "47 12 * * 1-5"
+    - cron: "17,47 13 * * 1-5"
+    - cron: "17 14 * * 1-5"
 concurrency:
   group: tick
   cancel-in-progress: false
