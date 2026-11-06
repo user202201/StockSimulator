@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 20
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -91,6 +91,13 @@ jobs:
           path: _site
       - id: deploy
         if: steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true            # GitHub sometimes cannot find the artifact it has just received; one retry below
+      - name: Wait before retrying the deployment
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 20
+      - id: deploy2
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v4
 
       - name: Hand over to the clock (tick keeps the chain going, also overnight and at weekends)
