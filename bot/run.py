@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai as aimod
+import macro as macromod
 import news as newsmod
 import learn
 
@@ -71,7 +72,7 @@ RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free 
 RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
-PROMPT_VER = {"long": 3, "short": 3, "aggr": 1}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
+PROMPT_VER = {"long": 4, "short": 4, "aggr": 2}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
 AI_SPACING_S = 300   # if another account asked the AI within the last 5 min, this review waits for the next run (once per review, so nothing starves)
 E_DEFAULT_CAP, E_RESERVE = 200, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
@@ -599,7 +600,7 @@ def decide_ai(acct, env, p):
     invested = sum(x["shares"] * prices.get(s, x["avg_cost"]) for s, x in pos_map.items()) / eq if eq else 0
     payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq, "invested_pct": invested,
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
-               "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "regime": regime_rows(closes), "news": news}
+               "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "regime": regime_rows(closes), "macro": {"gauges": env["macro"]().get("gauges", []), "headlines": env["macro"]().get("headlines", [])}, "news": news}
     messages = aimod.build_messages(payload)
     st["attempts"][key] = st["attempts"].get(key, 0) + 1
     h = env["health_ai"]
@@ -612,7 +613,7 @@ def decide_ai(acct, env, p):
         log_decision({"time": ts, "account": acct["name"], "round": key, "error": str(e)[:500], "prompt": messages[1]["content"]})
         return
     h["last_ok"], h["last_error"], st["last_error"] = ts, None, None
-    nid = {n["id"]: n for n in news}
+    nid = {n["id"]: n for n in news + payload["macro"]["headlines"]}
     avail = max(acct["cash"] - committed(acct), 0)
     if acct.get("instant"):                                      # proceeds of sells already queued (by code) will be usable by the buys
         avail += sum(x["shares"] * prices.get(s, x["avg_cost"]) * (1 - SLIPPAGE) for s, x in pos_map.items() if s in pend)
@@ -738,7 +739,7 @@ def market_snapshot(closes, ctx, ts):
                   "vol": round(vol20(c), 4), "sma20_5": round(sma(c[:-5], 20), 2) if len(c) >= 26 else None, "mom20": round(i["mom20"], 4), "mom60": round(i["mom60"], 4), "off_high": round(c[-1] / max(c[-60:]) - 1, 4), "spark": [round(x, 2) for x in c[-40:]]}
     return out
 
-def step(state, closes, ctx, ts, news_fn=None, ai=None):
+def step(state, closes, ctx, ts, news_fn=None, ai=None, macro_fn=None):
     """One run. closes {sym: [daily closes..., live]}, ctx {sym: {open, high, low}} for today's bar."""
     prices = state["prices"]
     for s, c in closes.items():
@@ -753,6 +754,22 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None):
         items = [n for n in cache["all"] if n["sym"] in UNIVERSE and (now - n["ts"]) / 3600 <= max_age_h][:50]
         return [{"id": f"N{i + 1}", "sym": n["sym"], "title": n["title"], "src": n["src"], "age_h": (now - n["ts"]) / 3600}
                 for i, n in enumerate(items)]
+    mcache = {}
+    def macro():
+        """Market-wide gauges + macro headlines, fetched lazily (only when an AI review is due) and reused for 10 minutes."""
+        if "v" not in mcache:
+            old = state.get("macro") or {}
+            now = parse_ts(ts).timestamp()
+            if old.get("t") and now - parse_ts(old["t"]).timestamp() < 600:
+                mcache["v"] = old
+            else:
+                got = macro_fn(now) if macro_fn else {"gauges": [], "headlines": []}
+                if got["gauges"] or got["headlines"]:
+                    state["macro"] = {"t": ts, **got}
+                else:
+                    state["macro"] = {**old, "failed_at": ts} if old else {"t": ts, "gauges": [], "headlines": [], "failed_at": ts}
+                mcache["v"] = state["macro"]
+        return mcache["v"]
     today = et_date(ts)
     intra = state.setdefault("intraday", {"date": today, "px": {}})
     if intra.get("date") != today:
@@ -765,7 +782,7 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None):
         used = u.get(today, 0) + getattr(ai, "http_calls", 0)
         cap = (u["limit_hint"] - E_RESERVE) if u.get("limit_hint") else E_DEFAULT_CAP
         return used < cap
-    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "ai": ai, "intraday": intra["px"], "state": state, "budget_ok": budget_ok,
+    env = {"closes": closes, "ctx": ctx, "ts": ts, "prices": prices, "news": news, "macro": macro, "ai": ai, "intraday": intra["px"], "state": state, "budget_ok": budget_ok,
            "health_ai": state["health"].setdefault("ai", {})}
     for aid, acct in sorted(state["accounts"].items(), key=lambda kv: AI_PARAMS.get(kv[0], {}).get("prio", -1)):   # D first, then E, then C: the most time-critical review gets the AI first
         settle(acct, ts)
@@ -915,7 +932,7 @@ def run_live():
             for a in state["accounts"].values():
                 a["ai"]["attempts"] = {}
         apply_events(state, evmap, now.timestamp())
-        step(state, closes, ctx, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), client if client.providers else None)
+        step(state, closes, ctx, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), client if client.providers else None, macromod.fetch)
         record_usage(state, client, ts)
         h["ai"]["configured"] = client.names()
         h.update(last_ok=ts, last_error="; ".join(notes) or None, fail_count=0)
@@ -971,7 +988,7 @@ def run_demo(days=40):
                 r = random.Random(ts)
                 return [{"sym": s, "title": r.choice(TEMPLATES).format(n=NAMES[s]), "src": "Demo Wire",
                          "ts": t.timestamp() - r.uniform(0, 6) * 3600} for s in UNIVERSE if r.random() < 0.5]
-            step(state, closes, ctx, ts, fake_news, client)
+            step(state, closes, ctx, ts, fake_news, client, lambda now: {"gauges": [{"sym": "^VIX", "name": "VIX (fear index)", "kind": "vol", "price": 21.4, "d1": 0.05, "d5": 0.12, "d20": 0.2}, {"sym": "^TNX", "name": "US 10-year yield %", "kind": "rate", "price": 4.2, "d1": -0.01, "d5": 0.02, "d20": 0.03}], "headlines": [{"id": "M1", "sym": "MKT", "topic": "markets", "title": "Demo: stocks slide as investors weigh policy risk", "src": "demo", "age_h": 3.0}]})
         close_t = datetime(day.year, day.month, day.day, 16, 5, tzinfo=NY).astimezone(timezone.utc)
         def close_news(t=close_t):
             r = random.Random(t.isoformat())
