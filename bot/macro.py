@@ -9,6 +9,9 @@ import news as newsmod
 GAUGES = [
     ("^VIX", "VIX (fear index)", "vol"),
     ("^TNX", "US 10-year yield %", "rate"),
+    ("^IRX", "US 3-month T-bill yield % (10y minus this = yield curve)", "rate"),
+    ("HYG", "High-yield corporate bonds ETF (credit stress when falling)", "credit"),
+    ("TLT", "Long Treasury bonds ETF", "bond"),
     ("DX-Y.NYB", "US dollar index", "fx"),
     ("CL=F", "WTI oil", "cmd"),
     ("GC=F", "Gold", "cmd"),

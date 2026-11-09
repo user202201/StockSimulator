@@ -244,6 +244,7 @@ HORIZON = {
 - Buy mainly on TREND: stocks with price above SMA20 and SMA50 and a positive 20/60-day trend (a pullback is a nice entry, but you do NOT have to wait for one). News/catalysts can support a trend buy but should not be the only reason: pure oversold-bounce or pre-earnings gambles are not your style. Avoid names that are truly overextended (RSI above ~80 or far above SMA20) without a catalyst.
 - Capital deployment: when the trend is up you are about 90% invested and keep only a SMALL cash reserve (about 10%) for adding to your positions on pullbacks and for emergencies. The prompt tells you your CURRENT invested share; below 80% with decent trend setups you are expected to add in this review (scale in, do not wait for a pullback that may never come). Holding more than 20% cash is only acceptable with a concrete reason (broken market trend, no real setups) stated in the summary.
 - Prefer concentrated, high-conviction positions over many small ones; the number of names is up to you.
+- You also hold a STANDING OUTLOOK for the next weeks to months, like an investor who forms a view of the market cycle and sticks to it until the evidence changes: use the LONG-TERM VIEW line, the yield curve (10-year minus 3-month), credit (HYG), valuation-stretch signals such as heavy concentration in a few AI names, policy and macro headlines. Add a top-level "outlook" object to your JSON: {"stance": "bullish|neutral|cautious|bearish", "horizon": "e.g. next 1-3 months", "reason": {"en":"...","fr":"...","zh":"..."}, "risks": {"en":"...","fr":"...","zh":"..."}}. Your stance drives the invested share: bullish about 90%, neutral about 70%, cautious about 40-50%, bearish 20% or less. Do not flip it day to day on noise; a real turn needs a stated reason. Being early is costly: when you turn cautious, scale out gradually.
 - Macro shocks matter to you most: when politics, policy or a sector-wide fear (for example AI regulation) is hitting the stocks you own, reduce exposure to that theme early instead of waiting for the stop. Defensive sectors (utilities, staples) and cash are valid places to wait.
 - Use the reserve deliberately: add to a held winner that pulls back to its SMA20 inside an intact uptrend.
 - Sell when the thesis is broken (trend broken, catalyst failed) or a multi-day target is reached; do not sell on small dips.""",
@@ -280,6 +281,15 @@ def build_messages(payload):
         lines += ["", f"MARKET REGIME: SPY ${g['spy']:.2f}, {g['vs_sma50']:+.1%} vs its 50-day average, "
                   + ("n/a" if g["vs_sma200"] is None else f"{g['vs_sma200']:+.1%} vs its 200-day average") + f", 20-day momentum {g['mom20']:+.1%}. "
                   f"{g['uptrend']} of {g['n']} tracked stocks are in an uptrend (price above SMA50 and SMA20 above SMA50); {g['above20']} of {g['n']} are above their SMA20."]
+        if g.get("dd52") is not None:
+            lines.append(f"LONG-TERM VIEW: SPY is {g['dd52']:+.1%} from its 52-week high"
+                         + ("" if g.get("mom126") is None else f", {g['mom126']:+.1%} over six months")
+                         + f"; {g.get('above200', 0)} of {g.get('n200', 0)} tracked stocks are above their 200-day average.")
+    po = p.get("prev_outlook")
+    if po:
+        r = po.get("reason") or {}
+        lines += ["", f"YOUR PREVIOUS OUTLOOK ({po['time'][:10]}, horizon {po.get('horizon') or 'weeks-months'}): {po['stance'].upper()}. {(r.get('en') if isinstance(r, dict) else r) or ''} "
+                      "Keep this view unless the evidence has changed; if you change it, say why in the new outlook."]
     mc = p.get("macro") or {}
     if mc.get("gauges"):
         lines += ["", "BIG PICTURE, market-wide gauges (name | level | today | 5d | 20d):"]
@@ -363,7 +373,12 @@ class MockClient:
                              "reason": ({"en": "Bounce after an intraday pullback", "fr": "Rebond après un repli intrajournalier", "zh": "日内回调后的反弹机会"} if short else
                                         {"en": "Uptrend with supportive news flow", "fr": "Tendance haussière et actualité favorable", "zh": "趋势向上且消息面偏正面"}),
                              "headline_ids": by_sym.get(r["symbol"], [])[:2]})
-        return json.dumps({"summary": self._ml("(demo) simple rules mimicking an AI answer", "(démo) règles simples imitant une IA", "（演示）按简单规则模拟 AI 输出"), "decisions": decs}, ensure_ascii=False), meta
+        out = {"summary": self._ml("(demo) simple rules mimicking an AI answer", "(démo) règles simples imitant une IA", "（演示）按简单规则模拟 AI 输出"), "decisions": decs}
+        if payload and payload.get("horizon") == "long":
+            out["outlook"] = {"stance": self.r.choice(["bullish", "bullish", "neutral", "cautious"]), "horizon": "next 1-3 months",
+                              "reason": self._ml("(demo) trend intact, breadth fair", "(démo) tendance intacte", "（演示）趋势完好，广度尚可"),
+                              "risks": self._ml("(demo) policy shock", "(démo) choc politique", "（演示）政策冲击")}
+        return json.dumps(out, ensure_ascii=False), meta
 
     def second_opinion(self, messages, primary_model, payload=None):
         txt, _ = self.decide(messages, payload)

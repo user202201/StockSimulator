@@ -72,7 +72,7 @@ RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free 
 RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
-PROMPT_VER = {"long": 4, "short": 4, "aggr": 2}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
+PROMPT_VER = {"long": 5, "short": 4, "aggr": 2}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
 AI_SPACING_S = 300   # if another account asked the AI within the last 5 min, this review waits for the next run (once per review, so nothing starves)
 E_DEFAULT_CAP, E_RESERVE = 200, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
@@ -498,8 +498,11 @@ def regime_rows(closes):
     up = sum(1 for c in stocks if uptrend(c))
     a20 = sum(1 for c in stocks if c[-1] > sma(c, 20))
     s200 = sma(spy, 200)
+    long_n = [c for c in stocks if len(c) >= 200]
     return {"spy": spy[-1], "vs_sma50": spy[-1] / sma(spy, 50) - 1, "vs_sma200": (spy[-1] / s200 - 1) if s200 else None,
-            "mom20": spy[-1] / spy[-21] - 1, "n": len(stocks), "uptrend": up, "above20": a20}
+            "mom20": spy[-1] / spy[-21] - 1, "n": len(stocks), "uptrend": up, "above20": a20,
+            "dd52": spy[-1] / max(spy[-252:]) - 1, "mom126": (spy[-1] / spy[-127] - 1) if len(spy) > 127 else None,
+            "above200": sum(1 for c in long_n if c[-1] > sma(c, 200)), "n200": len(long_n)}
 
 def market_rows(closes, ctx, intraday=None):
     rows = []
@@ -600,6 +603,7 @@ def decide_ai(acct, env, p):
     invested = sum(x["shares"] * prices.get(s, x["avg_cost"]) for s, x in pos_map.items()) / eq if eq else 0
     payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq, "invested_pct": invested,
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
+               "prev_outlook": ((st.get("outlook") or [None])[-1]) if p["horizon"] == "long" else None,
                "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "regime": regime_rows(closes), "macro": {"gauges": env["macro"]().get("gauges", []), "headlines": env["macro"]().get("headlines", [])}, "news": news}
     messages = aimod.build_messages(payload)
     st["attempts"][key] = st["attempts"].get(key, 0) + 1
@@ -613,6 +617,11 @@ def decide_ai(acct, env, p):
         log_decision({"time": ts, "account": acct["name"], "round": key, "error": str(e)[:500], "prompt": messages[1]["content"]})
         return
     h["last_ok"], h["last_error"], st["last_error"] = ts, None, None
+    ol = data.get("outlook") if p["horizon"] == "long" and isinstance(data, dict) else None
+    if isinstance(ol, dict) and str(ol.get("stance", "")).lower() in ("bullish", "neutral", "cautious", "bearish"):
+        st.setdefault("outlook", []).append({"time": ts, "stance": str(ol["stance"]).lower(), "horizon": str(ol.get("horizon", ""))[:40],
+                                            "reason": ml(ol.get("reason", ""), 200), "risks": ml(ol.get("risks", ""), 200)})
+        st["outlook"] = st["outlook"][-40:]
     nid = {n["id"]: n for n in news + payload["macro"]["headlines"]}
     avail = max(acct["cash"] - committed(acct), 0)
     if acct.get("instant"):                                      # proceeds of sells already queued (by code) will be usable by the buys
