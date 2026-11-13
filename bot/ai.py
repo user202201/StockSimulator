@@ -343,6 +343,15 @@ class MockClient:
                                    "（演示）这笔交易按规则执行，结果主要由当天大盘走势决定。"),
                 "takeaway": self._ml("Judge decisions by process, not by one result.", "Jugez le processus, pas un seul résultat.", "要看决策过程，而不是单次结果。")}
                 for x in payload["trades"]]}), meta
+        if task == "events":
+            cs = payload["candidates"][:4]
+            return json.dumps({"mood": self._ml("(demo) Cautious tone, tech leads the swings", "(démo) Ton prudent, la tech mène les variations", "（演示）情绪谨慎，科技股波动最大"),
+                "events": [{"id": c["id"], "importance": 5 - i, "headline": self._ml("(demo) " + c["title"][:90], "(démo) " + c["title"][:90], "（演示）" + c["title"][:60]),
+                            "why": self._ml("(demo) Matters for AI and chip stocks.", "(démo) Important pour les valeurs IA et puces.", "（演示）与 AI 和芯片股相关。"), "affects": ["NVDA", "SOXX"]}
+                           for i, c in enumerate(cs)],
+                "industries": [{"group": g["group"], "view": self.r.choice(["positive", "neutral", "negative"]),
+                                "why": self._ml("(demo) Moves follow the market and policy news.", "(démo) Les mouvements suivent le marché.", "（演示）走势跟随大盘与政策消息。")}
+                               for g in payload["industry_stats"]]}, ensure_ascii=False), meta
         if task == "digest":
             mv = payload.get("movers", [])[:3]
             return json.dumps({"headline": self._ml("(demo) A mixed day led by tech moves", "(démo) Séance contrastée menée par la tech", "（演示）科技股带动、走势分化的一天"),

@@ -80,7 +80,7 @@ def fetch(now_ts, per_topic=3, max_age_h=48):
             if k in seen or (now_ts - h["ts"]) / 3600 > max_age_h:
                 continue
             seen.add(k); kept += 1
-            heads.append({"sym": "MKT", "topic": h["topic"], "title": h["title"], "src": h["src"], "age_h": round((now_ts - h["ts"]) / 3600, 1)})
+            heads.append({"sym": "MKT", "topic": h["topic"], "title": h["title"], "src": h["src"], "url": h.get("url", ""), "ts": h["ts"], "age_h": round((now_ts - h["ts"]) / 3600, 1)})
             if kept >= per_topic:
                 break
     heads.sort(key=lambda h: h["age_h"])

@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai as aimod
 import macro as macromod
+import events as eventsmod
 import news as newsmod
 import learn
 
@@ -775,6 +776,7 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None, macro_fn=None):
                 got = macro_fn(now) if macro_fn else {"gauges": [], "headlines": []}
                 if got["gauges"] or got["headlines"]:
                     state["macro"] = {"t": ts, **got}
+                    eventsmod.update(state, got, ts, et_date(ts))
                 else:
                     state["macro"] = {**old, "failed_at": ts} if old else {"t": ts, "gauges": [], "headlines": [], "failed_at": ts}
                 mcache["v"] = state["macro"]
@@ -799,6 +801,8 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None, macro_fn=None):
         KIND[acct["kind"]](acct, env)
         acct["equity"].append({"time": ts, "equity": round(equity_of(acct, prices), 2)})
         compact_equity(acct, ts)
+    if ai is not None and macro_fn is not None:
+        eventsmod.maybe_curate(state, ai, ts, today, et_hm(ts), state.get("market", {}), (state.get("macro") or {}).get("gauges", []))
     state["updated"] = ts
 
 
@@ -907,6 +911,7 @@ def run_live():
                     state.get("learn", {}).get("errors", {}).clear()
                 client = aimod.Client(pinned=h.setdefault("ai", {}).setdefault("pinned", {}), dead=h["ai"].setdefault("dead", {}))
                 learn.post_close(state, client if client.providers else None, ts, lambda: newsmod.fetch_all(UNIVERSE, NAMES), NAMES, UNIVERSE)
+                eventsmod.maybe_curate(state, client if client.providers else None, ts, et.date().isoformat(), (et.hour, et.minute), state.get("market", {}), (state.get("macro") or {}).get("gauges", []))
                 record_usage(state, client, ts)
                 save_state(state)
                 print("post-close learning pass done.")
@@ -997,13 +1002,16 @@ def run_demo(days=40):
                 r = random.Random(ts)
                 return [{"sym": s, "title": r.choice(TEMPLATES).format(n=NAMES[s]), "src": "Demo Wire",
                          "ts": t.timestamp() - r.uniform(0, 6) * 3600} for s in UNIVERSE if r.random() < 0.5]
-            step(state, closes, ctx, ts, fake_news, client, lambda now: {"gauges": [{"sym": "^VIX", "name": "VIX (fear index)", "kind": "vol", "price": 21.4, "d1": 0.05, "d5": 0.12, "d20": 0.2}, {"sym": "^TNX", "name": "US 10-year yield %", "kind": "rate", "price": 4.2, "d1": -0.01, "d5": 0.02, "d20": 0.03}], "headlines": [{"id": "M1", "sym": "MKT", "topic": "markets", "title": "Demo: stocks slide as investors weigh policy risk", "src": "demo", "age_h": 3.0}]})
+            step(state, closes, ctx, ts, fake_news, client, lambda now: {"gauges": [{"sym": "^VIX", "name": "VIX (fear index)", "kind": "vol", "price": 21.4, "d1": 0.05, "d5": 0.12, "d20": 0.2}, {"sym": "^TNX", "name": "US 10-year yield %", "kind": "rate", "price": 4.2, "d1": -0.01, "d5": 0.02, "d20": 0.03}], "headlines": [{"id": "M1", "sym": "MKT", "topic": "markets", "title": "Demo: stocks slide as investors weigh policy risk", "src": "Demo Wire", "url": "", "age_h": 3.0},
+                {"id": "M2", "sym": "MKT", "topic": "ai_policy", "title": "Demo: lawmakers propose limits on new AI data centers", "src": "Demo Times", "url": "", "age_h": 5.0},
+                {"id": "M3", "sym": "MKT", "topic": "fed", "title": "Demo: Fed officials signal patience on rate cuts", "src": "Demo Wire", "url": "", "age_h": 2.0}]})
         close_t = datetime(day.year, day.month, day.day, 16, 5, tzinfo=NY).astimezone(timezone.utc)
         def close_news(t=close_t):
             r = random.Random(t.isoformat())
             return [{"sym": s, "title": r.choice(TEMPLATES).format(n=NAMES[s]) + f" ({r.randint(1, 999)})", "src": "Demo Wire", "ts": t.timestamp() - r.uniform(0, 20) * 3600}
                     for s in UNIVERSE if r.random() < 0.6]
         learn.post_close(state, client, close_t.strftime("%Y-%m-%dT%H:%M:%SZ"), close_news, NAMES, UNIVERSE)
+        eventsmod.maybe_curate(state, client, close_t.strftime("%Y-%m-%dT%H:%M:%SZ"), day.strftime("%Y-%m-%d"), (16, 5), state.get("market", {}), (state.get("macro") or {}).get("gauges", []))
         for s in UNIVERSE:
             hist[s].append(paths[s][N])
     state["health"].update(last_ok=state["updated"], last_attempt=state["updated"])

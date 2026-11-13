@@ -23,7 +23,7 @@ def _items(root, default_src):
         except Exception:
             continue
         src = (it.findtext("source") or default_src).strip()
-        out.append({"title": title, "src": src, "ts": ts})
+        out.append({"title": title, "src": src, "ts": ts, "url": (it.findtext("link") or "").strip()})
     return out
 
 
