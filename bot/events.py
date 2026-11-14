@@ -12,7 +12,7 @@ GROUPS = {
     "auto": ["TSLA"],
     "index": ["SPY", "QQQ"],
 }
-TOPIC_W = {"markets": 1, "fed": 2, "politics": 2, "ai_policy": 2, "trade": 2, "world": 2, "energy": 1}
+TOPIC_W = {"markets": 1, "fed": 2, "politics": 2, "ai_policy": 2, "trade": 2, "world": 2, "energy": 1, "ai_credit": 3, "ai_infra": 2}
 STOP = set("the a an of to in on for and or as at by with from is are was were be this that it its after amid over into than more new says say will".split())
 KEEP_DAYS, TOP_N = 7, 12
 

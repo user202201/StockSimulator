@@ -32,6 +32,8 @@ TOPICS = [
     ("trade", "tariffs trade China export controls chips"),
     ("world", "geopolitics war Middle East Taiwan Russia markets"),
     ("energy", "oil prices OPEC"),
+    ("ai_credit", "Nvidia guarantee financing GPU-backed loans data center debt neocloud credit"),
+    ("ai_infra", "data center power grid electricity permits moratorium approval"),
 ]
 
 

@@ -64,6 +64,7 @@ B_TP_K, B_TP_MIN, B_TP_MAX = 0.8, 0.010, 0.030       # B take-profit = 0.8 x dai
 B_SL_K, B_SL_MIN, B_SL_MAX = 1.0, 0.010, 0.035       # B stop-loss = 1.0 x daily volatility (1%-3.5%)
 B_DIP_K, B_DIP_MIN, B_DIP_MAX = 0.6, 0.008, 0.020    # B entry threshold (pullback from open / breakout minimum) = 0.6 x daily volatility
 B_BREAK_BUFFER = 0.01                                # B: exit when the close is 1% below the 20-day average
+B_VIX_LEVEL, B_VIX_JUMP = 28.0, 0.15                 # B: no new entries when VIX is at least this high or jumped this much in a day
 B_MAX_HOLD_DAYS = 7                                  # B: calendar days (~5 trading days); then rotate at the close
 B_BRK_MAX, B_BRK_RANGE = 0.060, 0.75   # B breakout entry: up 1%-6% from the open and in the top quarter of today's range
 B_VOL_TARGET, B_W_MIN, B_W_MAX = 0.003, 0.08, 0.25   # B: same idea, smaller
@@ -73,7 +74,7 @@ RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free 
 RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
-PROMPT_VER = {"long": 5, "short": 4, "aggr": 2}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
+PROMPT_VER = {"long": 5, "short": 5, "aggr": 3}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
 AI_SPACING_S = 300   # if another account asked the AI within the last 5 min, this review waits for the next run (once per review, so nothing starves)
 E_DEFAULT_CAP, E_RESERVE = 200, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
@@ -95,7 +96,7 @@ ACCOUNTS = {
                "同一天买入的股票当天不卖；卖出后 3 天内不再买回"]),
     "rule_short": dict(name="B 日内规则", kind="rule_short", style="规则 · 短线", freq="每 15 分钟检查，一天可多次交易，持仓数天，不强制清仓",
         desc="完全按预设条件做短线，和 A 同属顺势，但看的是短期趋势（站上并向上的 20 日均线），挑股票按“今天的异动幅度”排序，不看 A 那样的 60 日长期动量，所以不会和 A 买同一批；节奏更快：入场更灵敏、目标更小、周转更快，靠一次次小赢累积，求稳。没有合适机会时可以观望，但不会长期空仓；不会每天清仓，持仓可以过夜。没有 AI。",
-        rules=["买入：10:00–15:30 之间，SPY 在 200 日线之上且当日跌幅不超过 1.5%，短期上升趋势的股票（现价>20日均线且20日均线比5天前更高）满足其一，同时满足的按当日异动幅度（相对日波动）从大到小选：①较开盘回落到按波动率定的幅度（约 0.8%–2%，低吸）；②较开盘上涨超过该幅度（不超过 6%）且处在当日区间上沿（顺势追强）",
+        rules=["买入：10:00–15:30 之间，SPY 在 200 日线之上且当日跌幅不超过 1.5%、VIX 没有飙升（不低于 28 或单日涨超 15% 时不开新仓），短期上升趋势的股票（现价>20日均线且20日均线比5天前更高）满足其一，同时满足的按当日异动幅度（相对日波动）从大到小选：①较开盘回落到按波动率定的幅度（约 0.8%–2%，低吸）；②较开盘上涨超过该幅度（不超过 6%）且处在当日区间上沿（顺势追强）",
                "最多同时持有 6 只，仓位按波动率调整（每只 8%–25%），总仓位最多 95%，每只股票每天最多买一次",
                "卖出：止盈 0.8 倍日波动（1%–3%，小赢就走）/ 止损 1.0 倍日波动（1%–3.5%）/ 收盘前确认跌破 20 日线 1% / 持有满 7 天（约 5 个交易日）后在收盘前换仓；不再每天清仓，盈亏都可以过夜"]),
     "ai_long": dict(name="C AI 稳健", kind="ai_long", style="AI + 新闻 · 中线", freq="每天 1 次（美东 10:30），持有数天到数周",
@@ -379,6 +380,13 @@ def b_levels(c):
     return (min(max(B_TP_K * v, B_TP_MIN), B_TP_MAX), min(max(B_SL_K * v, B_SL_MIN), B_SL_MAX),
             min(max(B_DIP_K * v, B_DIP_MIN), B_DIP_MAX), min(max(B_DIP_K * v, B_DIP_MIN), B_DIP_MAX))
 
+def risk_off(state):
+    """VIX at 28+ or jumping 15%+ in a day (from the macro feed): a long-only short-term trader stands aside."""
+    for g in (state.get("macro") or {}).get("gauges", []):
+        if g.get("sym") == "^VIX":
+            return g["price"] >= B_VIX_LEVEL or g["d1"] >= B_VIX_JUMP
+    return False
+
 def decide_rule_short(acct, env):
     """B = A's idea at a faster pace: short-trend stocks only, small volatility-scaled targets, positions may be held for days (no daily flatten)."""
     closes, ctx, ts, prices = env["closes"], env["ctx"], env["ts"], env["prices"]
@@ -409,7 +417,7 @@ def decide_rule_short(acct, env):
     if not (INTRADAY_WINDOW[0] <= hm < INTRADAY_WINDOW[1]) or BENCH not in closes or BENCH not in ctx or not market_regime_ok(closes):
         return
     spy_chg = closes[BENCH][-1] / ctx[BENCH]["open"] - 1
-    if spy_chg <= -0.015:
+    if spy_chg <= -0.015 or risk_off(env["state"]):
         return
     skip = set(acct["positions"]) | traded_today(acct, today)
     cands = []
@@ -490,6 +498,17 @@ def decide_random(acct, env):
 
 
 # ---------- AI traders ----------
+def track_record(acct, last=40):
+    """Own closed-trade statistics for the prompt: a short-term trader needs a win rate above the break-even one."""
+    sells = [t for t in acct["trades"] if t["side"] == "SELL" and t.get("pnl") is not None][-last:]
+    if len(sells) < 6:
+        return None
+    w = [t["pnl"] for t in sells if t["pnl"] > 0]
+    l = [-t["pnl"] for t in sells if t["pnl"] <= 0]
+    aw, al = (sum(w) / len(w) if w else 0.0), (sum(l) / len(l) if l else 0.0)
+    return {"n": len(sells), "win_rate": len(w) / len(sells), "avg_win": aw, "avg_loss": al,
+            "breakeven": (al / (aw + al)) if (aw + al) else None}
+
 def regime_rows(closes):
     """Market-wide trend summary for the AI: SPY vs its averages and how many of the tracked stocks are in an uptrend."""
     spy = closes.get(BENCH)
@@ -605,6 +624,7 @@ def decide_ai(acct, env, p):
     payload = {"horizon": p["horizon"], "now_et": f"{today} {hm[0]:02d}:{hm[1]:02d}", "equity": eq, "invested_pct": invested,
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
                "prev_outlook": ((st.get("outlook") or [None])[-1]) if p["horizon"] == "long" else None,
+               "record": track_record(acct),
                "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "regime": regime_rows(closes), "macro": {"gauges": env["macro"]().get("gauges", []), "headlines": env["macro"]().get("headlines", [])}, "news": news}
     messages = aimod.build_messages(payload)
     st["attempts"][key] = st["attempts"].get(key, 0) + 1
