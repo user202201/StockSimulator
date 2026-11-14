@@ -35,7 +35,8 @@ INITIAL_CASH = 5000.0
 CORE = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO"]
 AI_STOCKS = ["AMD", "PLTR", "TSM", "ORCL", "ARM", "MU", "MRVL", "SMCI", "SNOW", "NOW"]
 UNIVERSE = CORE + AI_STOCKS + ["PTC"]
-NAMES = {"SPY": "SPDR S&P 500 ETF", "QQQ": "Invesco QQQ", "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "Nvidia",
+HEDGE_SYMS = ["SH", "PSQ", "GLD", "XLP", "XLU"]     # only account F may trade these (inverse ETFs and defensives); not part of the controls
+NAMES = {"SH": "ProShares Short S&P500 (-1x)", "PSQ": "ProShares Short QQQ (-1x)", "GLD": "SPDR Gold", "XLP": "Consumer Staples ETF", "XLU": "Utilities ETF", "SPY": "SPDR S&P 500 ETF", "QQQ": "Invesco QQQ", "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "Nvidia",
          "AMZN": "Amazon", "GOOGL": "Alphabet Google", "META": "Meta Platforms", "TSLA": "Tesla", "AVGO": "Broadcom",
          "AMD": "Advanced Micro Devices", "PLTR": "Palantir", "TSM": "Taiwan Semiconductor", "ORCL": "Oracle",
          "ARM": "Arm Holdings", "MU": "Micron", "MRVL": "Marvell", "SMCI": "Super Micro Computer",
@@ -74,7 +75,7 @@ RANDOM_SELL_PROB, RANDOM_BUY_PROB = 0.10, 0.50   # per held position / per free 
 RANDOM_VER = 2
 
 NO_LIMIT = 99                     # "no fixed limit" for the AI traders; cap 1.0 = no per-stock limit (only the available cash limits a position)
-PROMPT_VER = {"long": 5, "short": 5, "aggr": 3}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
+PROMPT_VER = {"long": 5, "short": 5, "aggr": 3, "hedge": 0}   # bump a number when that persona's prompt changes: its account then re-runs today's due review once with the new prompt
 AI_SPACING_S = 300   # if another account asked the AI within the last 5 min, this review waits for the next run (once per review, so nothing starves)
 E_DEFAULT_CAP, E_RESERVE = 200, 8  # E (aggressive) may use AI calls until the day's total reaches this, or (observed daily limit - reserve)
 AI_PARAMS = {
@@ -82,6 +83,9 @@ AI_PARAMS = {
                 "prio": 2, "rounds": [(10, 30)], "news_age": 36, "flatten": None, "no_new_after": None, "reentry": True},
     "ai_short": {"horizon": "short", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.03, "min_hold": 0, "max_buys": NO_LIMIT,
                  "prio": 0, "rounds": [(10, 0), (11, 30), (13, 0), (14, 30), (15, 30)], "news_age": 8, "flatten": None, "no_new_after": (15, 45), "reentry": True},
+    "ai_hedge": {"horizon": "hedge", "max_pos": NO_LIMIT, "cap": 1.0, "stop": 0.03, "min_hold": 0, "max_buys": NO_LIMIT, "prio": 3,
+                 "rounds": [(11, 0), (12, 30), (14, 0), (15, 0)], "news_age": 8, "flatten": None, "no_new_after": (15, 45), "reentry": True,
+                 "budget": True, "extra": HEDGE_SYMS},
     "ai_aggr": {"horizon": "aggr", "max_pos": NO_LIMIT, "cap": 1.0, "stop": None, "min_hold": 0, "max_buys": NO_LIMIT,
                 "prio": 1, "rounds": [(h, m) for h in range(10, 15) for m in (15, 45)] + [(15, 15)], "news_age": 8, "flatten": None, "no_new_after": (15, 45),
                 "reentry": True, "budget": True},
@@ -108,6 +112,9 @@ ACCOUNTS = {
         desc="一天内多次复盘的短线交易员：看当天的日内信号（较开盘涨跌、当日区间位置、最近一小时走势）加最新新闻做交易。预期画像：目标约 +1%–3%，亏损约 -1.5% 就走（代码硬止损 -3%），持有数小时到几天，仓位约 50%–90%；15:30 的收盘复盘由 AI 决定每个仓位留过夜还是卖出，也可以根据当天新闻在收盘前追加买入。",
         rules=["AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由",
                "代码只保留基本风控：亏损 3% 强制止损，15:45 后不开新仓；不限制持仓只数、选股和单只仓位（可以集中持有一只，也可以分散），按操盘手惯例自行保留一定现金"]),
+    "ai_hedge": dict(name="F AI 对冲", kind="ai_hedge", style="AI + 新闻 · 对冲短线", freq='每天 4 次（美东 11:00 / 12:30 / 14:00 / 15:00），可隔夜持有',
+        desc='对冲短线交易员：和 D 一样做日内短线，但多了对冲工具——可以买反向 ETF（SH 做空标普 500、PSQ 做空纳指 100，各 -1 倍）和防御资产（黄金 GLD、必需消费品 XLP、公用事业 XLU），也可以持现金。先判断方向：上涨时拿股票，转跌或避险时转到反向 ETF、防御资产或现金，趋势转向就调头，小赢就跑、亏了快砍。不能直接做空股票、不能加杠杆。F 从 2026-11-16（周一）开始，对比时请只看同期成绩。',
+        rules=['AI 自主决策，必须引用新闻编号，买入前必须先写看多和看空理由', '可买的标的：21 只股票 + 对冲工具 SH、PSQ（反向 ETF，适合持有几小时到几天，长期持有会损耗）+ 防御资产 GLD、XLP、XLU；不能直接做空股票、不能加杠杆', '代码只保留基本风控：亏损 3% 强制止损，15:45 后不开新仓；不限制持仓只数和单只仓位；额度紧张时 F 最先暂停']),
     "ai_aggr": dict(name="E AI 激进", kind="ai_aggr", style="AI + 新闻 · 高周转", freq="每 30 分钟复盘（美东 10:15–15:15，共 11 次，与 C、D 错开以免触发限速），可隔夜持有",
         desc="从 D 克隆、更激进的版本：目标是提高资金周转率，让资金尽量一直在运转，用来测试“高周转”是否更有效率。预期画像：每 30 分钟复盘一次（11 次/天），小利 +0.5%–2% 就走，亏损约 -1% 就走，通常 85%–100% 投入，卖出款立即可用，可以卖一只马上买另一只；买卖次数、持仓只数都不设限，只受免费 AI 额度限制。",
         rules=["AI 自主决策，必须引用新闻编号；看多/看空辩论对它是可选的（为了速度）",
@@ -255,12 +262,17 @@ def migrate(state):
         state["accounts"]["ai_aggr"] = clone
     elif e is None:                                             # nothing to clone yet
         state["accounts"]["ai_aggr"] = new_account("ai_aggr")
+    if "ai_hedge" not in state["accounts"]:
+        f = new_account("ai_hedge")
+        f["started"] = datetime.now(NY).date().isoformat()
+        state["accounts"]["ai_hedge"] = f
+    state["hedge_universe"] = HEDGE_SYMS
     r = state["accounts"].get("random")
     if r is not None and r.get("ver") != RANDOM_VER and not r["trades"]:
         state["accounts"]["random"] = new_account("random")
 
 def new_state():
-    return {"version": STATE_VERSION, "initial_cash": INITIAL_CASH, "universe": UNIVERSE,
+    return {"version": STATE_VERSION, "initial_cash": INITIAL_CASH, "universe": UNIVERSE, "hedge_universe": HEDGE_SYMS,
             "accounts": {k: new_account(k) for k in ACCOUNTS}, "prices": {}, "events_seen": {}, "updated": None,
             "demo": False, "health": {"last_ok": None, "last_attempt": None, "last_error": None, "fail_count": 0, "ai": {}}}
 
@@ -514,7 +526,7 @@ def regime_rows(closes):
     spy = closes.get(BENCH)
     if not spy or len(spy) < 60:
         return None
-    stocks = [c for s_, c in closes.items() if s_ not in (BENCH, "QQQ") and len(c) >= 51]
+    stocks = [c for s_, c in closes.items() if s_ in UNIVERSE and s_ not in (BENCH, "QQQ") and len(c) >= 51]
     up = sum(1 for c in stocks if uptrend(c))
     a20 = sum(1 for c in stocks if c[-1] > sma(c, 20))
     s200 = sma(spy, 200)
@@ -524,9 +536,9 @@ def regime_rows(closes):
             "dd52": spy[-1] / max(spy[-252:]) - 1, "mom126": (spy[-1] / spy[-127] - 1) if len(spy) > 127 else None,
             "above200": sum(1 for c in long_n if c[-1] > sma(c, 200)), "n200": len(long_n)}
 
-def market_rows(closes, ctx, intraday=None):
+def market_rows(closes, ctx, intraday=None, extra=None):
     rows = []
-    for s in UNIVERSE:
+    for s in UNIVERSE + list(extra or []):
         c = closes.get(s)
         if not c or len(c) < 61:
             continue
@@ -616,7 +628,9 @@ def decide_ai(acct, env, p):
         rules.append(f"code force-sells at -{p['stop']:.0%} loss")
     if p["max_pos"] >= 50:
         rules.append("no fixed limit on the number of positions or on how many names you buy")
-    if p["horizon"] in ("short", "aggr"):
+    if p.get("extra"):
+        rules.append("besides the stocks you may trade: " + ", ".join(p["extra"]) + " (SH/PSQ are -1x inverse ETFs: they rise when the market falls; for hours to days only)")
+    if p["horizon"] in ("short", "aggr", "hedge"):
         rules.append("positions MAY be held overnight (gap risk); the 15:30 ET review is the last chance to trade today; no new buys after 15:45 ET")
     if acct.get("instant"):
         rules.append("sale proceeds are available immediately for new buys, so you can rotate within a review")
@@ -625,7 +639,7 @@ def decide_ai(acct, env, p):
                "cash": max(acct["cash"] - committed(acct), 0), "max_positions": p["max_pos"], "weight_cap": p["cap"],
                "prev_outlook": ((st.get("outlook") or [None])[-1]) if p["horizon"] == "long" else None,
                "record": track_record(acct),
-               "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"]), "regime": regime_rows(closes), "macro": {"gauges": env["macro"]().get("gauges", []), "headlines": env["macro"]().get("headlines", [])}, "news": news}
+               "rules": rules, "positions": positions, "market": market_rows(closes, ctx, env["intraday"], p.get("extra")), "regime": regime_rows(closes), "macro": {"gauges": env["macro"]().get("gauges", []), "headlines": env["macro"]().get("headlines", [])}, "news": news}
     messages = aimod.build_messages(payload)
     st["attempts"][key] = st["attempts"].get(key, 0) + 1
     h = env["health_ai"]
@@ -657,7 +671,7 @@ def decide_ai(acct, env, p):
         bear = ml(d.get("bear"), 160) if d.get("bear") else None
         e = {"symbol": sym, "action": act, "reason": reason, "bull": bull, "bear": bear, "applied": False, "note": None}
         round_decs.append(e)
-        if sym not in UNIVERSE or sym not in closes or act not in ("BUY", "SELL", "HOLD"):
+        if (sym not in UNIVERSE and sym not in (p.get("extra") or [])) or sym not in closes or act not in ("BUY", "SELL", "HOLD"):
             e["note"] = K("n.invalid"); continue
         if act == "HOLD":
             continue
@@ -742,7 +756,8 @@ KIND = {"rule_long": decide_rule_long, "rule_short": decide_rule_short, "spy": d
         "equal": decide_equal, "random": decide_random,
         "ai_long": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_long"]),
         "ai_short": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_short"]),
-        "ai_aggr": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_aggr"])}
+        "ai_aggr": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_aggr"]),
+        "ai_hedge": lambda a, e: decide_ai(a, e, AI_PARAMS["ai_hedge"])}
 
 
 def compact_equity(acct, now_ts, keep_days=7):
@@ -945,7 +960,7 @@ def run_live():
             except Exception as e:
                 return s, None, str(e)
         with ThreadPoolExecutor(6) as ex:
-            got = list(ex.map(f, UNIVERSE))
+            got = list(ex.map(f, UNIVERSE + HEDGE_SYMS))
         closes, ctx, evmap, notes = {}, {}, {}, []
         for s, d, err in got:
             if err:
@@ -987,9 +1002,10 @@ def run_demo(days=40):
     global DEMO
     DEMO = True
     rnd = random.Random(7)
-    params = {s: (rnd.uniform(0.0002, 0.0012), rnd.uniform(0.01, 0.025), 100 * rnd.uniform(0.5, 3)) for s in UNIVERSE}
+    SIM = UNIVERSE + HEDGE_SYMS
+    params = {s: (rnd.uniform(0.0002, 0.0012), rnd.uniform(0.01, 0.025), 100 * rnd.uniform(0.5, 3)) for s in SIM}
     hist = {}
-    for s in UNIVERSE:
+    for s in SIM:
         drift, vol, p = params[s]
         hist[s] = []
         for _ in range(300):
@@ -1005,7 +1021,7 @@ def run_demo(days=40):
     N = 26
     for day in dates:
         paths = {}
-        for s in UNIVERSE:
+        for s in SIM:
             drift, vol, _ = params[s]
             p0 = hist[s][-1]
             p1 = p0 * math.exp(drift + vol * rnd.gauss(0, 1))
@@ -1016,8 +1032,8 @@ def run_demo(days=40):
         for k in range(1, N):
             t = (datetime(day.year, day.month, day.day, 9, 30, tzinfo=NY) + timedelta(minutes=15 * k)).astimezone(timezone.utc)
             ts = t.strftime("%Y-%m-%dT%H:%M:%SZ")
-            closes = {s: hist[s] + [paths[s][k]] for s in UNIVERSE}
-            ctx = {s: {"open": paths[s][0], "high": max(paths[s][:k + 1]), "low": min(paths[s][:k + 1])} for s in UNIVERSE}
+            closes = {s: hist[s] + [paths[s][k]] for s in SIM}
+            ctx = {s: {"open": paths[s][0], "high": max(paths[s][:k + 1]), "low": min(paths[s][:k + 1])} for s in SIM}
             def fake_news(t=t):
                 r = random.Random(ts)
                 return [{"sym": s, "title": r.choice(TEMPLATES).format(n=NAMES[s]), "src": "Demo Wire",
@@ -1032,7 +1048,7 @@ def run_demo(days=40):
                     for s in UNIVERSE if r.random() < 0.6]
         learn.post_close(state, client, close_t.strftime("%Y-%m-%dT%H:%M:%SZ"), close_news, NAMES, UNIVERSE)
         eventsmod.maybe_curate(state, client, close_t.strftime("%Y-%m-%dT%H:%M:%SZ"), day.strftime("%Y-%m-%d"), (16, 5), state.get("market", {}), (state.get("macro") or {}).get("gauges", []))
-        for s in UNIVERSE:
+        for s in SIM:
             hist[s].append(paths[s][N])
     state["health"].update(last_ok=state["updated"], last_attempt=state["updated"])
     save_state(state)

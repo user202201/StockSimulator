@@ -10,8 +10,8 @@ from zoneinfo import ZoneInfo
 import ai as aimod
 
 NY = ZoneInfo("America/New_York")
-TRADERS = ("rule_long", "rule_short", "ai_long", "ai_short", "ai_aggr")
-EN_NAME = {"rule_long": "A trend rules (swing)", "rule_short": "B intraday rules", "ai_long": "C AI swing", "ai_short": "D AI short-term", "ai_aggr": "E AI aggressive high-turnover (instant settlement)",
+TRADERS = ("rule_long", "rule_short", "ai_long", "ai_short", "ai_aggr", "ai_hedge")
+EN_NAME = {"rule_long": "A trend rules (swing)", "rule_short": "B intraday rules", "ai_long": "C AI swing", "ai_short": "D AI short-term", "ai_hedge": "F AI hedged short-term", "ai_aggr": "E AI aggressive high-turnover (instant settlement)",
            "spy": "SPY buy&hold", "equal": "equal-weight 21", "random": "random control"}
 TOPICS = ["sma", "rsi", "momentum", "drawdown", "volatility", "stop", "slippage", "t1", "pdt", "fractional", "benchmark",
           "survivorship", "lookahead", "samplesize", "winrate", "turnover", "fees", "regime", "relstrength", "calibration"]

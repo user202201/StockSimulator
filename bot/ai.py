@@ -248,6 +248,12 @@ HORIZON = {
 - Macro shocks matter to you most: when politics, policy or a sector-wide fear (for example AI regulation) is hitting the stocks you own, reduce exposure to that theme early instead of waiting for the stop. Defensive sectors (utilities, staples) and cash are valid places to wait.
 - Use the reserve deliberately: add to a held winner that pulls back to its SMA20 inside an intact uptrend.
 - Sell when the thesis is broken (trend broken, catalyst failed) or a multi-day target is reached; do not sell on small dips.""",
+    "hedge": """ROLE: you are the HEDGED SHORT-TERM TRADER (account F). You are reviewed 4 times a day (11:00, 12:30, 14:00, 15:00 ET) and think in hours to a few days, like account D, but you also have hedging tools.
+- Besides the 21 stocks you may buy SH and PSQ (inverse ETFs: -1x S&P 500 and -1x Nasdaq-100, they RISE when the market falls) and defensive assets GLD (gold), XLP (consumer staples), XLU (utilities). You cannot short stocks or use leverage. Inverse ETFs reset daily and decay over long holds: use them for hours to a few days, never as a long-term holding.
+- FIRST decide the market direction for the next hours/days from the BIG PICTURE block, the gauges, the macro headlines and the intraday data, and write it in your summary. Rising or stable: hold stocks with intraday strength. Turning down or risk-off (VIX jumping, indices falling, a sector-wide fear): move to SH/PSQ, defensives or cash; do not sit in a large stock position hoping. Turn around quickly when the trend turns: small wins, cut losses fast (the code force-sells at -3%).
+- Net market exposure = stocks minus inverse ETFs. Do not hold a large stock position together with an inverse ETF on the same index unless you explain the pair; a hedge that cancels the position is pointless.
+- Every buy reason must cite at least one intraday signal from the table (move vs the open, position in today's range, last-60-minute change) or, for defensives/inverse ETFs, the big-picture reason. Be active when there is an edge, patient when there is not; cash is a valid position.
+- Positions MAY be held overnight, but gap risk is real: at the 15:00 review decide for each position carry or sell. No new buys after 15:45 ET.""",
     "short": """ROLE: you are the ACTIVE SHORT-TERM TRADER (account D). You are reviewed up to 5 times a day (10:00, 11:30, 13:00, 14:30 and a closing review at 15:30 ET) and think in hours to a few days.
 - Target moves of roughly +1% to +3%; cut losers fast (about -1.5%; the code force-sells at -3%). Use the intraday data: position inside today's range, the last-60-minute change, move vs the open.
 - Your edge is the INTRADAY picture, not the daily trend (the daily trend is account C's job). Every buy reason must cite at least one intraday signal from the table: move vs the open, position inside today's range, or the last-60-minute change. 'Strong uptrend' or 'mega-cap leader' alone is not enough.
@@ -274,7 +280,7 @@ def build_messages(payload):
              + ("no per-position cap: you decide how concentrated to be, limited only by the cash available." if p["weight_cap"] >= 1 else f"weight cap per position {p['weight_cap']:.0%}."),
              "Rules: " + "; ".join(p["rules"])]
     if p.get("invested_pct") is not None:
-        target = {"long": "target about 90% invested / about 10% cash reserve", "short": "target roughly 50-90% invested while the market is open", "aggr": "target 85-100% invested"}[p["horizon"]]
+        target = {"long": "target about 90% invested / about 10% cash reserve", "short": "target roughly 50-90% invested while the market is open", "aggr": "target 85-100% invested", "hedge": "stocks when rising, inverse ETFs/defensives/cash when falling; any invested share is fine"}[p["horizon"]]
         lines.append(f"CURRENT INVESTED SHARE: {p['invested_pct']:.0%} of equity in stocks, {1 - p['invested_pct']:.0%} cash ({target}).")
     if p.get("regime"):
         g = p["regime"]
@@ -286,7 +292,7 @@ def build_messages(payload):
                          + ("" if g.get("mom126") is None else f", {g['mom126']:+.1%} over six months")
                          + f"; {g.get('above200', 0)} of {g.get('n200', 0)} tracked stocks are above their 200-day average.")
     rec = p.get("record")
-    if rec and p["horizon"] in ("short", "aggr"):
+    if rec and p["horizon"] in ("short", "aggr", "hedge"):
         lines += ["", f"YOUR RECENT RECORD (last {rec['n']} closed trades): win rate {rec['win_rate']:.0%}, average win ${rec['avg_win']:.2f}, average loss ${rec['avg_loss']:.2f}"
                       + (f"; you need a win rate above {rec['breakeven']:.0%} just to break even. " if rec.get("breakeven") else ". ")
                       + ("You are BELOW break-even: trade less, take only setups with a clear edge, keep entries confirmed by the intraday signals, and cut losers faster than you take profits. " if rec.get("breakeven") and rec["win_rate"] < rec["breakeven"] else
@@ -366,7 +372,7 @@ class MockClient:
                 "movers": [{"symbol": m["symbol"], "why": self._ml("(demo) No clear news; likely sector flow.", "(démo) Pas de nouvelle claire ; probablement un flux sectoriel.", "（演示）没有明确新闻，可能是板块资金流动。")} for m in mv],
                 "lesson": {"topic": self.r.choice(payload["topics"]), "title": self._ml("(demo) Today's concept", "(démo) Notion du jour", "（演示）今日概念"),
                            "body": self._ml("(demo) This concept showed up in today's data; see the glossary for the full explanation.", "(démo) Cette notion apparaît dans les données du jour ; voir le glossaire.", "（演示）这个概念出现在今天的数据里，完整解释见词典。")}}), meta
-        p, decs, short, aggr = payload, [], payload["horizon"] in ("short", "aggr"), payload["horizon"] == "aggr"
+        p, decs, short, aggr = payload, [], payload["horizon"] in ("short", "aggr", "hedge"), payload["horizon"] == "aggr"
         by_sym = {}
         for n in p["news"]:
             by_sym.setdefault(n["sym"], []).append(n["id"])
