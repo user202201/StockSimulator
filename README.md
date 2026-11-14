@@ -1,7 +1,7 @@
 # StockSimulator
-美股模拟交易实验：GitHub Actions 定时运行机器人，GitHub Pages 展示看板。详见 [EXPERIMENT.md](EXPERIMENT.md)。
+美股模拟交易实验：GitHub Actions 定时运行机器人，GitHub Pages 展示看板。实验规则、变更日志与证据见 [EXPERIMENT.md](EXPERIMENT.md)；**架构、模块实现、状态结构、运维与开发手册见 [DEVELOPMENT.md](DEVELOPMENT.md)**（给 AI/开发者的上下文，入口为 [CLAUDE.md](CLAUDE.md)）。
 
-- `bot/run.py`：行情获取（Yahoo）、多账户引擎、规则策略、模拟成交
+- `bot/run.py`：行情获取（Yahoo）、多账户引擎（A–F 与对照组）、规则策略、模拟成交；`bot/ai.py`：AI 客户端与提示词；`bot/learn.py`、`bot/macro.py`、`bot/events.py`、`bot/news.py`：学习、大环境、要闻、新闻
 - `docs/`：静态看板（含内置 Chart.js），`docs/data/state.json` 仅为离线演示数据
 - 机器人的真实数据存放在 `data` 分支（`state.json`），每次运行后随看板一起发布
 
@@ -11,7 +11,7 @@ python bot/run.py --demo        # 生成演示数据
 python -m http.server -d docs   # 浏览器打开 http://localhost:8000
 ```
 
-## AI 服务（交易员 C、D 需要）
+## AI 服务（交易员 C、D、E、F 需要）
 机器人按顺序尝试已配置的服务商：自定义 → Gemini → GitHub Models。**建议配置 Gemini 免费密钥**（GitHub Models 可能已下线）：
 1. 到 https://aistudio.google.com/apikey 创建免费 API Key
 2. 仓库 Settings → Secrets and variables → Actions → New repository secret，名称 `GEMINI_API_KEY`

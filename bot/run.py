@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""US-stock paper trading experiment. Stdlib only.
+"""US-stock paper trading experiment. Stdlib only. Read DEVELOPMENT.md first (architecture, state schema, recipes).
 
-Seven accounts, same start ($5,000), same data, same fill/fee rules (see EXPERIMENT.md):
-  rule_long  A  rules, trend following, holds days-weeks
-  rule_short B  rules, intraday dip-buying, flat before the close
-  ai_long    C  AI + headlines, one review per day, swing holding
-  ai_short   D  AI + headlines, 4 reviews per day, intraday, flat before the close
+Accounts (same $5,000 start, same data, same fill/fee rules; EXPERIMENT.md has the pre-registration and the dated change log):
+  rule_long  A  rules, daily-bar trend follower (decides near the close), holds days-weeks
+  rule_short B  rules, A's idea at a faster pace (own 20-day-trend view, volatility-scaled small targets), holds days, no daily flatten
+  ai_long    C  AI + headlines + big picture, one review a day (10:30 ET), standing outlook, swing investor
+  ai_short   D  AI intraday trader, 5 reviews a day
+  ai_aggr    E  AI aggressive high-turnover clone of D (11 reviews, sale proceeds usable at once, no code stop)
+  ai_hedge   F  AI intraday trader that may also buy inverse ETFs / defensives (starts 2026-11-16)
   spy / equal / random   controls
 
 Realism enforced by the engine (never by the AI): fills on the NEXT run with slippage, regulatory sell fees,
-T+1 settlement (buys use settled cash only = cash-account model, no PDT), splits/dividends, market-session check,
-stale / anomalous quote protection, long-only, fractional shares.
+T+1 settlement (buys use settled cash only = cash-account model, no PDT; E is the experiment with instant proceeds),
+splits/dividends, market-session check, stale / anomalous quote protection, long-only, fractional shares.
 
   python bot/run.py          live      python bot/run.py --demo   offline demo with synthetic data
 """
