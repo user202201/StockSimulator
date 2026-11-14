@@ -263,9 +263,7 @@ def migrate(state):
     elif e is None:                                             # nothing to clone yet
         state["accounts"]["ai_aggr"] = new_account("ai_aggr")
     if "ai_hedge" not in state["accounts"]:
-        f = new_account("ai_hedge")
-        f["started"] = datetime.now(NY).date().isoformat()
-        state["accounts"]["ai_hedge"] = f
+        state["accounts"]["ai_hedge"] = new_account("ai_hedge")
     state["hedge_universe"] = HEDGE_SYMS
     r = state["accounts"].get("random")
     if r is not None and r.get("ver") != RANDOM_VER and not r["trades"]:
@@ -835,6 +833,8 @@ def step(state, closes, ctx, ts, news_fn=None, ai=None, macro_fn=None):
         fill_pending(acct, prices, set(closes), ts)
         KIND[acct["kind"]](acct, env)
         acct["equity"].append({"time": ts, "equity": round(equity_of(acct, prices), 2)})
+        if acct["kind"] == "ai_hedge" and "started" not in acct:
+            acct["started"] = et_date(ts)          # F starts when it first runs; the page shows it so nobody compares F with the others over different periods
         compact_equity(acct, ts)
     if ai is not None and macro_fn is not None:
         eventsmod.maybe_curate(state, ai, ts, today, et_hm(ts), state.get("market", {}), (state.get("macro") or {}).get("gauges", []))
