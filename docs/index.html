@@ -13,12 +13,19 @@
 a{color:inherit;text-decoration:none}
 .app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:100vh}
 aside{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;background:var(--card);border-right:1px solid var(--line);padding:16px 12px 10px}
-#nav{flex:1;min-height:0;overflow-y:auto}
+#nav{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;padding-top:2px;-webkit-mask-image:linear-gradient(#000 calc(100% - 18px),transparent);mask-image:linear-gradient(#000 calc(100% - 18px),transparent)}
+#nav::-webkit-scrollbar{display:none}
+*{scrollbar-width:thin;scrollbar-color:var(--line) transparent}::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}::-webkit-scrollbar-thumb:hover{background:var(--mut)}::-webkit-scrollbar-track{background:transparent}
+.tk{margin:0 4px 10px;font-size:12px;color:var(--mut)}.tk-line{height:18px;overflow:hidden;white-space:nowrap}
+.tk-in{display:inline-block;animation:tkin .4s ease-out both}.tk-in.tk-scroll{animation:tkin .4s ease-out both,tkscroll var(--tk-dur) linear 1.2s forwards}
+@keyframes tkin{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}@keyframes tkscroll{to{transform:translateX(var(--tk-shift))}}
+.tk-dots{display:flex;gap:4px;margin-top:5px}.tk-dots i{width:5px;height:5px;border-radius:50%;background:var(--line);cursor:pointer}.tk-dots i.on{background:var(--acc)}
+@media(prefers-reduced-motion:reduce){.tk-in,.tk-in.tk-scroll{animation:none}.tk-line{text-overflow:ellipsis}}
 main{padding:16px 24px 40px;min-width:0}
 h1{font-size:16px;margin:0 4px 2px}h2{font-size:14px;margin:0 0 10px;font-weight:600}h3{font-size:13px;margin:14px 0 6px;color:var(--mut);font-weight:600}
 .sub{color:var(--mut);font-size:12px;margin:0 4px 12px}
 .navl{font-size:11px;color:var(--mut);margin:14px 6px 4px;letter-spacing:.04em;text-transform:uppercase}
-.nav{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer}
+.nav{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:8px;cursor:pointer}
 .nav:hover{background:var(--bg)}.nav.on{background:var(--bg);font-weight:600;box-shadow:inset 3px 0 0 var(--acc)}
 .nav .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip{font-variant-numeric:tabular-nums;font-size:12px;font-weight:600}
@@ -387,14 +394,34 @@ function banners(){let h='';const hl=S.health||{};
     for(let x=new Date(d.getTime()+864e5);x<new Date(now.toDateString());x=new Date(x.getTime()+864e5))if(x.getDay()%6)miss++;
     if(miss>=1)h+=`<div class="banner warn">${t('b.stale',{n:miss})}</div>`}
   $('banner').innerHTML=h}
-function aiDead(){const h=S.health?.ai||{},d=h.dead||{},ms=Object.keys(d);let x='';if(ms.length)x+=`<br><span class="sm" style="color:var(--down,#c0392b)">${t('ai.dead',{m:ms.join(', ')})}</span>`;const q=h.last_429;if(q)x+=`<br><span class="sm mut">${t('ai.l429',{k:q.per_day?t('ai.perday'):t('ai.permin'),m:q.model,t:q.t.slice(5,16).replace('T',' ')})}</span>`;return x}
-function aiCalls(){const u=S.ai_usage||{},ks=Object.keys(u).filter(k=>k!=='limit_hint').sort();if(!ks.length)return '';const k=ks.at(-1);return `<br>${t('ai.calls',{n:u[k],d:k.slice(5)})}${u.limit_hint?' · '+t('ai.limit',{n:u.limit_hint}):''}`}
 let LAST_CHECK=null;
 function chkTxt(){return LAST_CHECK?t('rf.checked')+' '+LAST_CHECK.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}):''}
 function header(){
-  $('ttl').textContent=t('title');const ai=S.health?.ai||{};
-  $('upd').innerHTML=`${t('init')} ${usd(S.initial_cash)}<br>${t('updated')}: ${S.updated?fmtT(S.updated):'—'}<br>${t('ai')}: ${S.demo?t('ai.demo'):((ai.configured||[]).join(' → ')||t('ai.none'))}${ai.last_ok?`<br>${t('ai.ok')}: ${fmtT(ai.last_ok)}`:''}${aiCalls()}${aiDead()}<br><span class="sm">🔄 ${t('rf.auto')}</span><br><span class="sm mut" id="chk">${chkTxt()}</span>`;
+  $('ttl').textContent=t('title');
+  if(!$('tkl')){$('upd').innerHTML='<div class="tk"><div class="tk-line" id="tkl"></div><div class="tk-dots" id="tkd"></div></div>';$('upd').onmouseenter=()=>{TK.hold=true};$('upd').onmouseleave=()=>{TK.hold=false}}
+  tickerSet(infoItems());
   document.documentElement.lang=LANG;document.title=t('title').replace('📈 ','')}
+let TK={items:[],i:0,timer:null,hold:false};
+function infoItems(){const ai=S.health?.ai||{},u=S.ai_usage||{},it=[];
+  it.push(`${t('init')} ${usd(S.initial_cash)}`);
+  it.push(`${t('updated')}: ${S.updated?fmtT(S.updated):'—'}`);
+  it.push(`${t('ai')}: ${S.demo?t('ai.demo'):((ai.configured||[]).join(' → ')||t('ai.none'))}`);
+  if(ai.last_ok)it.push(`${t('ai.ok')}: ${fmtT(ai.last_ok)}`);
+  const ks=Object.keys(u).filter(k=>k!=='limit_hint').sort();if(ks.length){const k=ks.at(-1);it.push(`${t('ai.calls',{n:u[k],d:k.slice(5)})}${u.limit_hint?' · '+t('ai.limit',{n:u.limit_hint}):''}`)}
+  const ms=Object.keys(ai.dead||{});if(ms.length)it.push(`<span style="color:var(--down)">${t('ai.dead',{m:ms.join(', ')})}</span>`);
+  const q=ai.last_429;if(q)it.push(t('ai.l429',{k:q.per_day?t('ai.perday'):t('ai.permin'),m:q.model,t:q.t.slice(5,16).replace('T',' ')}));
+  it.push(`🔄 ${t('rf.auto')}`);
+  if(LAST_CHECK)it.push(chkTxt());
+  return it}
+function tickerSet(items){TK.items=items;if(TK.i>=items.length)TK.i=0;
+  const d=$('tkd');if(d){d.innerHTML=items.map((_,k)=>`<i data-k="${k}" class="${k===TK.i?'on':''}"></i>`).join('');d.onclick=e=>{const k=e.target.dataset?.k;if(k!=null){TK.i=+k;tickerShow()}}}
+  if(!TK.timer)tickerShow();else{const c=$('tkl')?.firstChild;if(c)c.innerHTML=TK.items[TK.i]||''}}
+function tickerShow(){const el=$('tkl');if(!el||!TK.items.length)return;clearTimeout(TK.timer);
+  el.innerHTML=`<span class="tk-in">${TK.items[TK.i]}</span>`;const inner=el.firstChild;
+  document.querySelectorAll('#tkd i').forEach((x,k)=>x.classList.toggle('on',k===TK.i));
+  const over=inner.scrollWidth-el.clientWidth;let dwell=3800;
+  if(over>4){const dur=Math.max(2.5,over/38);inner.style.setProperty('--tk-shift',-over+'px');inner.style.setProperty('--tk-dur',dur+'s');inner.classList.add('tk-scroll');dwell=Math.max(3800,(dur+1.2)*1000+1200)}
+  TK.timer=setTimeout(function nxt(){if(TK.hold||document.hidden){TK.timer=setTimeout(nxt,1000);return}TK.i=(TK.i+1)%TK.items.length;tickerShow()},dwell)}
 
 /* ============================ shared tables ============================ */
 function marketTable(a){
@@ -769,7 +796,7 @@ async function poll(){
   if(POLLING||document.hidden||!S)return;POLLING=true;
   try{
     const r=await fetch('data/state.json?'+Date.now(),{cache:'no-store'});
-    LAST_CHECK=new Date();const ce=$('chk');if(ce)ce.textContent=chkTxt();
+    LAST_CHECK=new Date();tickerSet(infoItems());
     if(r.ok){const txt=await r.text();
       if(txt!==LAST_TXT){LAST_TXT=txt;S=JSON.parse(txt);header();marketStrip();banners();
         if(canRerender()){const y=window.scrollY;render();window.scrollTo(0,y)}else nav(ROUTE);
